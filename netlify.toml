@@ -1,0 +1,8 @@
+# Rewir – ustawienia dla Netlify
+[build]
+  publish = "public"
+  command = "echo 'Rewir: brak budowania, tylko pliki'"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"

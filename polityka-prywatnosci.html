@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0f1d1a">
+<title>Polityka prywatności – Rewir</title>
+<link rel="icon" href="favicon.png">
+<style>
+:root{--bg:#f4f6f4;--ink:#13201b;--muted:#566660;--line:#d6ddd9;--acc:#e8420f;--card:#fff}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1714;--ink:#e8eee9;--muted:#9fb0a8;--line:#2a3833;--card:#16211d}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:720px;margin:0 auto;padding:28px 18px 60px}
+header{display:flex;align-items:center;gap:14px;margin-bottom:18px}
+header img{width:56px;height:56px;border-radius:14px}
+h1{font-size:26px;line-height:1.2;margin:0}
+.date{color:var(--muted);font-size:14px}
+h2{font-size:19px;margin:28px 0 8px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin:14px 0}
+table{width:100%;border-collapse:collapse;font-size:14.5px}
+th,td{text-align:left;vertical-align:top;padding:8px 6px;border-bottom:1px solid var(--line)}
+th{color:var(--muted);font-weight:600}
+a{color:var(--acc)}
+.back{display:inline-block;margin-top:26px;font-weight:600}
+</style>
+</head>
+<body>
+<main>
+<header><img src="icon-192.png" alt=""><div><h1>Polityka prywatności</h1><div class="date">Gra Rewir · obowiązuje od 13 listopada 2026</div></div></header>
+
+<div class="card"><b>W skrócie:</b> Rewir nie wymaga konta. Twoja lokalizacja, przejazdy i stan gry są zapisywane w pamięci Twojego telefonu. Jeśli dołączysz do gry online, na serwer gry trafiają tylko: Twoja ksywka i ikonka, trasy, które sam dodasz do rankingu, oraz czasy i prędkości z przejazdów na tych trasach.</div>
+
+<h2>1. Kto odpowiada za aplikację</h2>
+<p>Aplikację Rewir tworzy i udostępnia jej autor jako osoba prywatna. Kontakt w sprawach prywatności: <b>[wpisz tu swój adres e-mail]</b>.</p>
+
+<h2>2. Jakie dane gra przetwarza</h2>
+<ul>
+<li><b>Lokalizacja GPS</b> – do rysowania pozycji na mapie, pomiaru czasu zjazdów, nagrywania tras i mechanik gry (np. budowanie bazy, zwiad). Gra prosi o zgodę przeglądarki i możesz ją w każdej chwili cofnąć w ustawieniach telefonu.</li>
+<li><b>Twoje przejazdy, trasy, rekordy i stan gry</b> – zapisywane w pamięci przeglądarki na telefonie (localStorage i IndexedDB).</li>
+<li><b>Imię lub ksywka</b> – tylko jeśli je wpiszesz, żeby podpisać wyzwanie wysyłane znajomemu.</li>
+<li><b>Kontakt alarmowy</b> – tylko jeśli go wpiszesz w funkcji udostępniania pozycji; zostaje w telefonie.</li>
+<li><b>Gra online (tylko jeśli dołączysz)</b> – ksywka, ikonka, losowy identyfikator gracza i skrót (hash) Twojego kodu odzyskiwania; trasy, które sam dodasz do rankingu online (przebieg, nazwa, długość, spadek) – widzą je inni gracze; czasy, prędkości i daty przejazdów na tych trasach – widoczne w rankingach razem z ksywką; zawody online, które założysz lub do których dołączysz. Twoje pozostałe przejazdy, lokalizacja na żywo i baza nie są wysyłane.</li>
+<li><b>Krótkie linki do wyzwań</b> – gdy wysyłasz wyzwanie, jego treść (trasa, czas, podpis) zapisuje się na serwerze pod krótkim adresem.</li>
+<li><b>Czujnik tętna</b> – tylko jeśli sam go połączysz przez Bluetooth; odczyty zostają w telefonie.</li>
+</ul>
+<p>Gra nie zbiera danych reklamowych, nie używa plików cookie śledzących i nie sprzedaje żadnych danych.</p>
+
+<h2>3. Kiedy dane opuszczają telefon</h2>
+<ul>
+<li><b>Gdy sam je udostępniasz</b> – link z wyzwaniem (zawiera trasę i Twój czas), udostępnienie pozycji SMS-em lub komunikatorem, plik kopii zapasowej. Wysyłasz je Ty, wybraną przez siebie drogą.</li>
+<li><b>Gdy gra pobiera mapy i dane o terenie</b> – Twój telefon łączy się z usługami wymienionymi niżej. Każda z nich widzi, jak przy zwykłym przeglądaniu internetu, adres IP telefonu i fragment mapy lub współrzędne, o które pyta gra.</li>
+</ul>
+
+<h2>4. Usługi zewnętrzne</h2>
+<table>
+<tr><th>Usługa</th><th>Po co</th><th>Co otrzymuje</th></tr>
+<tr><td>OpenStreetMap, OpenTopoMap, Waymarked Trails, Esri (ArcGIS)</td><td>kafelki mapy, szlaki, zdjęcia satelitarne</td><td>obszar mapy, który oglądasz</td></tr>
+<tr><td>Terrain Tiles (AWS Open Data)</td><td>wysokość terenu, nachylenie, profil trasy</td><td>obszar mapy</td></tr>
+<tr><td>Open-Meteo</td><td>pogoda</td><td>przybliżone współrzędne</td></tr>
+<tr><td>Overpass API i Nominatim (OpenStreetMap)</td><td>szczyty w okolicy, nazwa nowego toru</td><td>współrzędne punktu</td></tr>
+<tr><td>Cloudflare cdnjs, Google Fonts</td><td>biblioteka mapy i czcionki</td><td>zwykłe zapytanie o plik</td></tr>
+<tr><td>Anthropic (Claude API)</td><td>„Analiza Claude” tras i zakładka „Prezydent”, tylko jeśli wpiszesz własny klucz API</td><td>dane analizowanej trasy (długość, spadek, nachylenia) albo treść rozmowy z Prezydentem i podsumowanie stanu gry</td></tr>
+<tr><td>Netlify</td><td>hosting strony gry i serwer gry online (Netlify Functions i Netlify Blobs)</td><td>standardowe dane połączenia (adres IP, przeglądarka); przy grze online także dane opisane w punkcie 2</td></tr>
+</table>
+
+<h2>5. Jak długo przechowujemy dane</h2>
+<p>Dane leżą w Twoim telefonie, dopóki ich nie usuniesz. Dane gry online są przechowywane, dopóki gra działa albo dopóki nie poprosisz o ich usunięcie (napisz na adres z punktu 1 i podaj swoją ksywkę). Gra robi też automatyczne kopie zapisu w pamięci telefonu (co 30 minut i co tydzień).</p>
+
+<h2>6. Jak usunąć dane</h2>
+<ul>
+<li>W przeglądarce: <i>Ustawienia → Ustawienia witryn → ta strona → Wyczyść dane</i>. Usuwa całą grę z telefonu.</li>
+<li>Pojedyncze trasy, przejazdy i zapisy usuniesz w grze (Rekordy, Moje → Zapis gry).</li>
+<li>Dane gry online usuniemy na Twoją prośbę – napisz na adres z punktu 1.</li>
+<li>Zgodę na lokalizację cofniesz w ustawieniach telefonu lub przeglądarki.</li>
+</ul>
+
+<h2>7. Twoje prawa</h2>
+<p>Masz prawo do wglądu, poprawienia i usunięcia swoich danych gry online. Dane w telefonie kontrolujesz sam. W razie pytań napisz na adres podany w punkcie 1. Masz też prawo złożyć skargę do Prezesa Urzędu Ochrony Danych Osobowych.</p>
+
+<h2>8. Bezpieczeństwo na trasie</h2>
+<p>Rewir to gra. Nie patrz na telefon podczas jazdy, przestrzegaj przepisów i zasad na trasach. Pomiar czasu i komunikaty głosowe są pomocą, a nie systemem bezpieczeństwa.</p>
+
+<h2>9. Zmiany</h2>
+<p>Jeśli zmieni się sposób działania gry, zaktualizujemy tę stronę i datę na górze.</p>
+
+<a class="back" href="./">← Wróć do gry</a>
+</main>
+</body>
+</html>

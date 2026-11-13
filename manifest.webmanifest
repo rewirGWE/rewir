@@ -1,0 +1,119 @@
+{
+  "id": "./",
+  "name": "Rewir – gra rowerowa",
+  "short_name": "Rewir",
+  "description": "Gra GPS, w której Twój rower buduje świat: zjazdy na czas, obrona bazy przed robakami, mistrzostwa i wyzwania ze znajomymi.",
+  "lang": "pl",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f1d1a",
+  "theme_color": "#0f1d1a",
+  "categories": [
+    "games",
+    "sports",
+    "fitness"
+  ],
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "shot-baza.webp",
+      "sizes": "540x960",
+      "type": "image/webp",
+      "form_factor": "narrow",
+      "label": "Twoja baza na mapie"
+    },
+    {
+      "src": "shot-walka.webp",
+      "sizes": "540x960",
+      "type": "image/webp",
+      "form_factor": "narrow",
+      "label": "Każdy zjazd to rakieta przeciw robakom"
+    },
+    {
+      "src": "shot-silos.webp",
+      "sizes": "540x960",
+      "type": "image/webp",
+      "form_factor": "narrow",
+      "label": "Silos kopany Twoimi zjazdami"
+    }
+  ],
+  "display_override": [
+    "standalone",
+    "minimal-ui"
+  ],
+  "launch_handler": {
+    "client_mode": "focus-existing"
+  },
+  "handle_links": "preferred",
+  "prefer_related_applications": false,
+  "related_applications": [],
+  "edge_side_panel": {},
+  "shortcuts": [
+    {
+      "name": "Baza",
+      "short_name": "Baza",
+      "url": "./?go=game",
+      "icons": [
+        {
+          "src": "icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Jazda na czas",
+      "short_name": "Jazda",
+      "url": "./?go=rec",
+      "icons": [
+        {
+          "src": "icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Mistrzostwa",
+      "short_name": "Mistrzostwa",
+      "url": "./?go=champ",
+      "icons": [
+        {
+          "src": "icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Silos",
+      "short_name": "Silos",
+      "url": "./?go=silo",
+      "icons": [
+        {
+          "src": "icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ]
+}
