@@ -1,5 +1,6 @@
 [build]
   publish = "."
+  command = "echo gotowe"
 
 [functions]
   directory = "netlify/functions"
