@@ -1,6 +1,6 @@
 [build]
   publish = "dist"
-  command = "mkdir -p dist && cp *.html *.js *.png *.jpg *.webp *.webmanifest _headers dist/"
+  command = '''mkdir -p dist/.well-known && cp *.html *.js *.png *.jpg *.webp *.webmanifest _headers dist/ && echo '[{"relation":["delegate_permission/common.handle_all_urls"],"target":{"namespace":"android_app","package_name":"pl.rewir.gra","sha256_cert_fingerprints":["4F:F9:6F:43:ED:51:F4:EB:A0:43:F6:7A:35:B3:EB:52:F0:6C:93:56:E9:3A:8F:F2:07:AA:36:B0:B5:52:76:07"]}}]' > dist/.well-known/assetlinks.json'''
 
 [functions]
   directory = "netlify/functions"
