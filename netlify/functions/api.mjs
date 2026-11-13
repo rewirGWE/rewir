@@ -56,6 +56,8 @@ let S = null;
 const db = () => (S = S || getStore({ name: "rewir", consistency: "strong" }));
 const get = k => db().get(k, { type: "json" });
 const put = (k, v) => db().setJSON(k, v);
+const del = k => db().delete(k);
+async function listKeys(prefix) { const r = await db().list({ prefix }); return (r && r.blobs || []).map(b => b.key); }
 
 async function who(req) {
   const k = normKey(req.headers.get("x-rewir-key"));
@@ -100,7 +102,7 @@ const routes = {
   "GET ping": async () => json({ ok: true, v: 1 }),
   /* gracz */
   "POST register": async (req, ip) => {
-    if (limited("reg:" + ip, 5, 3600e3)) return err("Za dużo nowych graczy z tej sieci. Spróbuj za godzinę.", 429);
+    if (limited("reg:" + ip, 20, 3600e3)) return err("Za dużo nowych graczy z tej sieci. Spróbuj za godzinę.", 429);
     const b = await body(req), nick = clean(b.nick, 20);
     if (nick.length < 2) return err("Ksywka musi mieć co najmniej 2 znaki.");
     const icon = ICONS.includes(b.icon) ? b.icon : ICONS[Math.floor(Math.random() * ICONS.length)];
@@ -187,8 +189,18 @@ const routes = {
       if (!cr[me.pid] || v > cr[me.pid].v) { cr[me.pid] = { v, n: me.nick, i: me.icon, d: run.d }; await put("cr/" + cid, cr); }
     }
     if (act.length !== (tr.cs || []).length) { tr.cs = act; await put("t/" + rid, tr); }
+    // wspólny zjazd grupy
+    let grp = null;
+    if (b.g && b.race && !ck.time) {
+      const g = await get("g/" + clean(b.g, 12)), race = g && (g.races || []).find(x => x.id === b.race);
+      if (g && g.members[me.pid] && race && race.rid === rid && run.d >= race.t0 - 120e3 && run.d <= race.t0 + 3 * 3600e3) {
+        const key = "gr/" + g.gid + "/" + me.pid, mine = (await get(key)) || {}, cur = mine[race.id];
+        if (!cur || run.t < cur.t) { mine[race.id] = { t: +run.t.toFixed(2), v: ck.speed ? 0 : v }; await put(key, mine); }
+        grp = { gid: g.gid, race: race.id };
+      }
+    }
     const T = sortTimes(lb, me.pid), V = sortSpeed(lb.speed, me.pid);
-    return json({ ok: true, newT, newV, rejected: ck.time || ck.speed ? ck : null, rankT: T.rank, rankV: V.rank, n: T.n, nV: V.n });
+    return json({ ok: true, grp, newT, newV, rejected: ck.time || ck.speed ? ck : null, rankT: T.rank, rankV: V.rank, n: T.n, nV: V.n });
   },
   "GET lb": async (req, ip, me, arg) => {
     const rid = +arg, tr = await get("t/" + rid); if (!tr) return err("Tej trasy nie ma w rankingu online.", 404);
@@ -224,6 +236,126 @@ const routes = {
   },
 };
 
+/* ---------- grupy: wspólne zjazdy ---------- */
+const GPRE = 3600e3, GPOST = 5 * 3600e3;                 // pozycje widać od godziny przed zbiórką do 5 h po
+const inWin = (g, t) => t >= g.at - GPRE && t <= g.at + GPOST;
+const RSVP = ["jade", "moze", "nie"];
+async function groupView(g, me) {
+  const now = Date.now(), mid = me && me.pid;
+  const members = Object.entries(g.members).map(([pid, x]) => ({ n: x.n, i: x.i, st: x.st, lead: pid === g.owner || undefined, me: pid === mid || undefined }));
+  let pos = [];
+  if (mid && g.members[mid] && inWin(g, now)) {
+    const keys = await listKeys("gp/" + g.gid + "/");
+    const all = await Promise.all(keys.map(k => get(k).then(v => [k.split("/").pop(), v])));
+    pos = all.filter(([pid, v]) => v && g.members[pid] && now - v.t < 15 * 60e3)
+      .map(([pid, v]) => ({ n: g.members[pid].n, i: g.members[pid].i, lat: v.lat, lng: v.lng, t: v.t, alert: v.alert || undefined, me: pid === mid || undefined }));
+  }
+  const races = (g.races || []).slice(-5);
+  if (races.length) {
+    const keys = await listKeys("gr/" + g.gid + "/");
+    const res = await Promise.all(keys.map(k => get(k).then(v => [k.split("/").pop(), v || {}])));
+    for (const r of races) {
+      r.rows = res.filter(([pid, v]) => v[r.id] && g.members[pid]).map(([pid, v]) => ({ n: g.members[pid].n, i: g.members[pid].i, t: v[r.id].t, v: v[r.id].v, me: pid === mid || undefined }))
+        .sort((a, b) => a.t - b.t);
+    }
+  }
+  const { owner, members: _m, ...pub } = g;
+  return { ...pub, members, pos, races, now, member: !!(mid && g.members[mid]), lead: !!(mid && mid === owner) };
+}
+Object.assign(routes, {
+  "POST group": async (req, ip, me) => {
+    if (!me) return err("Brak lub zły kod gracza.", 401);
+    if (limited("gc:" + me.pid, 10, 86400e3)) return err("Za dużo grup jednego dnia.", 429);
+    const b = await body(req), at = +b.at, lat = +b.lat, lng = +b.lng, now = Date.now();
+    if (!(at > now - 3600e3 && at < now + 60 * 864e5)) return err("Zła data zbiórki.");
+    if (!fin(lat) || !fin(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return err("Złe miejsce zbiórki.");
+    let rid = +b.rid || 0, rname = "";
+    if (rid) { const tr = await get("t/" + rid); if (!tr) return err("Najpierw dodaj trasę do rankingu online."); rname = tr.name; }
+    const gid = rnd(6), g = { gid, name: clean(b.name, 40) || "Wspólny zjazd", place: clean(b.place, 60), at, lat: +lat.toFixed(5), lng: +lng.toFixed(5), rid, rname,
+      owner: me.pid, ownerNick: me.nick, created: now, members: { [me.pid]: { n: me.nick, i: me.icon, st: "jade", j: now } }, races: [] };
+    await put("g/" + gid, g);
+    return json(await groupView(g, me));
+  },
+  "GET group": async (req, ip, me, arg) => {
+    const g = await get("g/" + clean(arg, 12)); if (!g) return err("Nie ma takiej grupy.", 404);
+    return json(await groupView(g, me));
+  },
+  "POST group join": async (req, ip, me, arg) => {
+    if (!me) return err("Brak lub zły kod gracza.", 401);
+    const g = await get("g/" + clean(arg, 12)); if (!g) return err("Nie ma takiej grupy.", 404);
+    if (!g.members[me.pid]) {
+      if (Object.keys(g.members).length >= 50) return err("Grupa jest pełna (50 osób).");
+      g.members[me.pid] = { n: me.nick, i: me.icon, st: "jade", j: Date.now() }; await put("g/" + g.gid, g);
+    }
+    return json(await groupView(g, me));
+  },
+  "POST group rsvp": async (req, ip, me, arg) => {
+    if (!me) return err("Brak lub zły kod gracza.", 401);
+    const g = await get("g/" + clean(arg, 12)); if (!g || !g.members[me.pid]) return err("Nie jesteś w tej grupie.", 403);
+    const b = await body(req); if (!RSVP.includes(b.st)) return err("Zła odpowiedź.");
+    g.members[me.pid].st = b.st; g.members[me.pid].n = me.nick; g.members[me.pid].i = me.icon; await put("g/" + g.gid, g);
+    return json(await groupView(g, me));
+  },
+  "POST group leave": async (req, ip, me, arg) => {
+    if (!me) return err("Brak lub zły kod gracza.", 401);
+    const g = await get("g/" + clean(arg, 12)); if (!g || !g.members[me.pid]) return json({ ok: true });
+    if (g.owner === me.pid && Object.keys(g.members).length > 1) return err("Lider nie może opuścić grupy, w której są inni.");
+    delete g.members[me.pid]; await put("g/" + g.gid, g); await del("gp/" + g.gid + "/" + me.pid).catch(() => {});
+    return json({ ok: true });
+  },
+  "POST group pos": async (req, ip, me, arg) => {
+    if (!me) return err("Brak lub zły kod gracza.", 401);
+    const g = await get("g/" + clean(arg, 12)); if (!g || !g.members[me.pid]) return err("Nie jesteś w tej grupie.", 403);
+    if (!inWin(g, Date.now())) return err("Pozycje widać tylko w czasie spotkania.", 409);
+    if (limited("gp:" + me.pid, 40, 600e3)) return err("Za często.", 429);
+    const b = await body(req), lat = +b.lat, lng = +b.lng;
+    if (b.off) { await del("gp/" + g.gid + "/" + me.pid).catch(() => {}); return json({ ok: true }); }
+    if (!fin(lat) || !fin(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return err("Złe współrzędne.");
+    await put("gp/" + g.gid + "/" + me.pid, { lat: +lat.toFixed(5), lng: +lng.toFixed(5), t: Date.now(), alert: b.alert ? 1 : 0 });
+    return json({ ok: true, now: Date.now() });
+  },
+  "POST group start": async (req, ip, me, arg) => {
+    if (!me) return err("Brak lub zły kod gracza.", 401);
+    const g = await get("g/" + clean(arg, 12)); if (!g) return err("Nie ma takiej grupy.", 404);
+    if (g.owner !== me.pid) return err("Start odpala tylko lider grupy.", 403);
+    const b = await body(req), rid = +b.rid || g.rid, tr = rid && (await get("t/" + rid));
+    if (!tr) return err("Wybierz trasę zjazdu (musi być w rankingu online).");
+    const last = (g.races || []).slice(-1)[0];
+    if (last && Date.now() - last.t0 < 60e3) return err("Odliczanie już trwa.");
+    const race = { id: rnd(4), rid, name: tr.name, t0: Date.now() + 15000 };
+    g.races = [...(g.races || []), race].slice(-10); await put("g/" + g.gid, g);
+    return json(await groupView(g, me));
+  },
+
+  /* ---------- wioski graczy na mapie ---------- */
+  "POST village": async (req, ip, me) => {
+    if (!me) return err("Brak lub zły kod gracza.", 401);
+    if (limited("vl:" + me.pid, 30, 3600e3)) return err("Za często.", 429);
+    const b = await body(req), old = await get("v/" + me.pid);
+    const drop = async c => { const ix = (await get("vx/" + c)) || {}; if (ix[me.pid]) { delete ix[me.pid]; await put("vx/" + c, ix); } };
+    if (b.off) { if (old) { await drop(old.c); await del("v/" + me.pid).catch(() => {}); } return json({ ok: true, off: true }); }
+    const lat = +b.lat, lng = +b.lng;
+    if (!fin(lat) || !fin(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return err("Złe współrzędne.");
+    const num = (x, a, z) => Math.max(a, Math.min(z, Math.round(+x || 0)));
+    const c = cellOf(lat, lng), v = { n: me.nick, i: me.icon, lat: +lat.toFixed(4), lng: +lng.toFixed(4), lvl: num(b.lvl, 1, 999), cells: num(b.cells, 0, 99999),
+      wave: num(b.wave, 0, 99999), wall: num(b.wall, 0, 100), era: clean(b.era, 20), name: clean(b.name, 30), t: Date.now() };
+    if (old && old.c !== c) await drop(old.c);
+    await put("v/" + me.pid, { ...v, c });
+    const ix = (await get("vx/" + c)) || {}; ix[me.pid] = v; await put("vx/" + c, ix);
+    return json({ ok: true });
+  },
+  "GET villages": async (req, ip, me) => {
+    const u = new URL(req.url), lat = +u.searchParams.get("lat"), lng = +u.searchParams.get("lng");
+    if (!fin(lat) || !fin(lng)) return err("Podaj lat i lng.");
+    const cy = Math.floor(lat * 10), cx = Math.floor(lng * 10), keys = [];
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) keys.push("vx/" + (cy + dy) + "_" + (cx + dx));
+    const now = Date.now(), out = [];
+    for (const ix of await Promise.all(keys.map(get))) for (const [pid, v] of Object.entries(ix || {}))
+      if (now - v.t < 30 * 864e5) out.push({ ...v, me: me && pid === me.pid || undefined });
+    return json({ villages: out.slice(0, 200), now });
+  },
+});
+
 export default async (req, context) => {
   const u = new URL(req.url), ip = (context && context.ip) || "?";
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: H });
@@ -233,8 +365,8 @@ export default async (req, context) => {
     if (m) { const s = await get("s/" + m[1]); return Response.redirect(new URL(s ? "/#w=" + s.d : "/?brak=wyzwania", req.url).href, 302); }
     m = u.pathname.match(/^\/z\/([A-Za-z0-9]{4,12})\/?$/);
     if (m) return Response.redirect(new URL("/#z=" + m[1], req.url).href, 302);
-    m = u.pathname.match(/^\/api\/([a-z]+)(?:\/([A-Za-z0-9_.-]+))?\/?$/);
-    const h = m && routes[req.method + " " + m[1]];
+    m = u.pathname.match(/^\/api\/([a-z]+)(?:\/([A-Za-z0-9_.-]+))?(?:\/([a-z]+))?\/?$/);
+    const h = m && routes[req.method + " " + m[1] + (m[3] ? " " + m[3] : "")];
     if (!h) return err("Nieznany adres.", 404);
     const me = await who(req);
     return await h(req, ip, me, m[2]);
