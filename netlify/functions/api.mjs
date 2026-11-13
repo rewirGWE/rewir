@@ -236,10 +236,38 @@ const routes = {
   },
 };
 
+/* ---------- znajomi ---------- */
+const normPid = x => String(x || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 10);
+const ONLINE = 3 * 60e3;
+const pair = (a, b) => (a < b ? a + "_" + b : b + "_" + a);
+const NEAR_KM = 30;
+const cell5 = (lat, lng) => Math.floor(lat * 2) + "_" + Math.floor(lng * 2);   // kratka 0,5° (ok. 55 x 35 km)
+const km = (a, b, c, d) => Math.hypot((c - a) * 111.32, (d - b) * 111.32 * Math.cos(a * Math.PI / 180));
+async function canChat(from, to, reading) {
+  if (!to || to.length !== 10 || from === to) return false;
+  const [bt, bf] = await Promise.all([get("bl/" + to), get("bl/" + from)]);
+  if ((bt && bt[from]) || (bf && bf[to] && !reading)) return false;
+  const fr = (await get("f/" + from)) || {}; if (fr[to]) return true;
+  const u = (await get("cu/" + from)) || {}; if (u[to]) return true;                 // ten gracz już do mnie pisał
+  const pk = "cm/" + pair(from, to) + "/" + from; if (await get(pk)) return true;     // ja już do niego pisałem
+  if (reading) return false;
+  const [a, b] = await Promise.all([get("nm/" + from), get("nm/" + to)]), now = Date.now();
+  return !!(a && b && now - a.t < 3600e3 && now - b.t < 3600e3 && km(a.lat, a.lng, b.lat, b.lng) <= NEAR_KM);
+}
+async function friendsOf(me) {
+  const fr = Object.keys((await get("f/" + me.pid)) || {}), now = Date.now();
+  const rows = await Promise.all(fr.map(async pid => { const [p, s] = await Promise.all([get("p/" + pid), get("s/" + pid)]);
+    return p ? { code: pid, n: p.nick, i: p.icon, seen: s ? s.t : 0, online: !!(s && now - s.t < ONLINE) } : null; }));
+  return { code: me.pid, friends: rows.filter(Boolean).sort((a, b) => (b.online - a.online) || (b.seen - a.seen)) };
+}
+
 /* ---------- grupy: wspólne zjazdy ---------- */
 const GPRE = 3600e3, GPOST = 5 * 3600e3;                 // pozycje widać od godziny przed zbiórką do 5 h po
 const inWin = (g, t) => t >= g.at - GPRE && t <= g.at + GPOST;
-const RSVP = ["jade", "moze", "nie"];
+const RSVP = ["jade", "moze", "nie"];             // "zapr" = dodany przez znajomego, jeszcze nie odpowiedział
+const GMAX = 10;                                         // najwyżej 10 osób w grupie
+async function pgAdd(pid, gid) { const a = (await get("pg/" + pid)) || []; if (!a.includes(gid)) { a.unshift(gid); await put("pg/" + pid, a.slice(0, 40)); } }
+async function pgDel(pid, gid) { const a = (await get("pg/" + pid)) || []; if (a.includes(gid)) await put("pg/" + pid, a.filter(x => x !== gid)); }
 async function groupView(g, me) {
   const now = Date.now(), mid = me && me.pid;
   const members = Object.entries(g.members).map(([pid, x]) => ({ n: x.n, i: x.i, st: x.st, lead: pid === g.owner || undefined, me: pid === mid || undefined }));
@@ -260,7 +288,7 @@ async function groupView(g, me) {
     }
   }
   const { owner, members: _m, ...pub } = g;
-  return { ...pub, members, pos, races, now, member: !!(mid && g.members[mid]), lead: !!(mid && mid === owner) };
+  return { ...pub, members, pos, races, now, max: GMAX, member: !!(mid && g.members[mid]), lead: !!(mid && mid === owner) };
 }
 Object.assign(routes, {
   "POST group": async (req, ip, me) => {
@@ -273,7 +301,7 @@ Object.assign(routes, {
     if (rid) { const tr = await get("t/" + rid); if (!tr) return err("Najpierw dodaj trasę do rankingu online."); rname = tr.name; }
     const gid = rnd(6), g = { gid, name: clean(b.name, 40) || "Wspólny zjazd", place: clean(b.place, 60), at, lat: +lat.toFixed(5), lng: +lng.toFixed(5), rid, rname,
       owner: me.pid, ownerNick: me.nick, created: now, members: { [me.pid]: { n: me.nick, i: me.icon, st: "jade", j: now } }, races: [] };
-    await put("g/" + gid, g);
+    await put("g/" + gid, g); await pgAdd(me.pid, gid);
     return json(await groupView(g, me));
   },
   "GET group": async (req, ip, me, arg) => {
@@ -284,8 +312,8 @@ Object.assign(routes, {
     if (!me) return err("Brak lub zły kod gracza.", 401);
     const g = await get("g/" + clean(arg, 12)); if (!g) return err("Nie ma takiej grupy.", 404);
     if (!g.members[me.pid]) {
-      if (Object.keys(g.members).length >= 50) return err("Grupa jest pełna (50 osób).");
-      g.members[me.pid] = { n: me.nick, i: me.icon, st: "jade", j: Date.now() }; await put("g/" + g.gid, g);
+      if (Object.keys(g.members).length >= GMAX) return err("Grupa jest pełna (" + GMAX + " osób).");
+      g.members[me.pid] = { n: me.nick, i: me.icon, st: "jade", j: Date.now() }; await put("g/" + g.gid, g); await pgAdd(me.pid, g.gid);
     }
     return json(await groupView(g, me));
   },
@@ -300,7 +328,7 @@ Object.assign(routes, {
     if (!me) return err("Brak lub zły kod gracza.", 401);
     const g = await get("g/" + clean(arg, 12)); if (!g || !g.members[me.pid]) return json({ ok: true });
     if (g.owner === me.pid && Object.keys(g.members).length > 1) return err("Lider nie może opuścić grupy, w której są inni.");
-    delete g.members[me.pid]; await put("g/" + g.gid, g); await del("gp/" + g.gid + "/" + me.pid).catch(() => {});
+    delete g.members[me.pid]; await put("g/" + g.gid, g); await del("gp/" + g.gid + "/" + me.pid).catch(() => {}); await pgDel(me.pid, g.gid);
     return json({ ok: true });
   },
   "POST group pos": async (req, ip, me, arg) => {
@@ -325,6 +353,100 @@ Object.assign(routes, {
     const race = { id: rnd(4), rid, name: tr.name, t0: Date.now() + 15000 };
     g.races = [...(g.races || []), race].slice(-10); await put("g/" + g.gid, g);
     return json(await groupView(g, me));
+  },
+
+  "POST group add": async (req, ip, me, arg) => {
+    if (!me) return err("Brak lub zły kod gracza.", 401);
+    const g = await get("g/" + clean(arg, 12)); if (!g || !g.members[me.pid]) return err("Nie jesteś w tej grupie.", 403);
+    const b = await body(req), fp = normPid(b.code), fr = (await get("f/" + me.pid)) || {};
+    if (!fr[fp]) return err("Do grupy dodasz tylko kogoś ze swoich znajomych.");
+    if (g.members[fp]) return json(await groupView(g, me));
+    if (Object.keys(g.members).length >= GMAX) return err("Grupa jest pełna (" + GMAX + " osób).");
+    const p = await get("p/" + fp); if (!p) return err("Nie ma takiego gracza.", 404);
+    g.members[fp] = { n: p.nick, i: p.icon, st: "zapr", j: Date.now(), by: me.nick }; await put("g/" + g.gid, g); await pgAdd(fp, g.gid);
+    return json(await groupView(g, me));
+  },
+
+  /* ---------- znajomi i status online ---------- */
+  "POST hello": async (req, ip, me) => {                     // sygnał „jestem w grze” + lista znajomych i grup
+    if (!me) return err("Brak lub zły kod gracza.", 401);
+    const now = Date.now(), last = hits.get("hl:" + me.pid);
+    if (!last || now - last[0] > 45e3) { hits.set("hl:" + me.pid, [now]); await put("s/" + me.pid, { t: now }); }
+    return json({ ...(await friendsOf(me)), groups: (await get("pg/" + me.pid)) || [], unread: (await get("cu/" + me.pid)) || {}, now });
+  },
+  "POST friend": async (req, ip, me) => {
+    if (!me) return err("Brak lub zły kod gracza.", 401);
+    if (limited("fr:" + me.pid, 30, 3600e3)) return err("Za dużo prób.", 429);
+    const b = await body(req), fp = normPid(b.code);
+    if (fp === me.pid) return err("To Twój własny kod.");
+    const p = fp.length === 10 && (await get("p/" + fp)); if (!p) return err("Nie ma gracza z takim kodem.", 404);
+    const a = (await get("f/" + me.pid)) || {}, c = (await get("f/" + fp)) || {};
+    if (Object.keys(a).length >= 100 || Object.keys(c).length >= 100) return err("Za dużo znajomych (najwyżej 100).");
+    a[fp] = { t: Date.now() }; c[me.pid] = { t: Date.now() }; await put("f/" + me.pid, a); await put("f/" + fp, c);
+    return json({ ok: true, ...pub(p) });
+  },
+  "POST friend remove": async (req, ip, me, arg) => {
+    if (!me) return err("Brak lub zły kod gracza.", 401);
+    const fp = normPid(arg), a = (await get("f/" + me.pid)) || {}, c = (await get("f/" + fp)) || {};
+    delete a[fp]; delete c[me.pid]; await put("f/" + me.pid, a); await put("f/" + fp, c);
+    return json({ ok: true });
+  },
+
+  /* ---------- czat ze znajomymi ---------- */
+  "POST chat": async (req, ip, me, arg) => {
+    if (!me) return err("Brak lub zły kod gracza.", 401);
+    const fp = normPid(arg);
+    if (!(await canChat(me.pid, fp))) return err("Pisać możesz do znajomych i do graczy w promieniu 30 km, którzy są widoczni na mapie.", 403);
+    if (limited("ch:" + me.pid, 30, 60e3)) return err("Za szybko. Odczekaj chwilę.", 429);
+    const b = await body(req), x = String(b.x || "").replace(/[\u0000-\u0008\u000b-\u001f]/g, "").trim().slice(0, 500);
+    if (!x) return err("Pusta wiadomość.");
+    const key = "cm/" + pair(me.pid, fp) + "/" + me.pid, a = (await get(key)) || [], t = Date.now();
+    a.push({ t, x }); await put(key, a.slice(-100));
+    const u = (await get("cu/" + fp)) || {}; u[me.pid] = { t, n: me.nick, i: me.icon }; await put("cu/" + fp, u);
+    return json({ ok: true, t });
+  },
+  "GET chat": async (req, ip, me, arg) => {
+    if (!me) return err("Brak lub zły kod gracza.", 401);
+    const fp = normPid(arg);
+    if (!(await canChat(me.pid, fp, true))) return err("Ta rozmowa nie jest dostępna.", 403);
+    const pk = "cm/" + pair(me.pid, fp) + "/", [mine, theirs] = await Promise.all([get(pk + me.pid), get(pk + fp)]);
+    const msgs = [...(mine || []).map(m => ({ ...m, me: true })), ...(theirs || [])].sort((a, b) => a.t - b.t).slice(-100);
+    return json({ msgs, now: Date.now() });
+  },
+
+  "POST block": async (req, ip, me, arg) => {
+    if (!me) return err("Brak lub zły kod gracza.", 401);
+    const fp = normPid(arg), bl = (await get("bl/" + me.pid)) || {}; bl[fp] = Date.now(); await put("bl/" + me.pid, bl);
+    const a = (await get("f/" + me.pid)) || {}, c = (await get("f/" + fp)) || {};
+    if (a[fp] || c[me.pid]) { delete a[fp]; delete c[me.pid]; await put("f/" + me.pid, a); await put("f/" + fp, c); }
+    const u = (await get("cu/" + me.pid)) || {}; if (u[fp]) { delete u[fp]; await put("cu/" + me.pid, u); }
+    return json({ ok: true });
+  },
+
+  /* ---------- gracze w okolicy (do 30 km) ---------- */
+  "POST near": async (req, ip, me) => {
+    if (!me) return err("Brak lub zły kod gracza.", 401);
+    if (limited("nb:" + me.pid, 40, 600e3)) return err("Za często.", 429);
+    const b = await body(req), old = await get("nm/" + me.pid);
+    const dropOld = async c => { const ix = (await get("nb/" + c)) || {}; if (ix[me.pid]) { delete ix[me.pid]; await put("nb/" + c, ix); } };
+    if (b.off) { if (old) { await dropOld(old.c); await del("nm/" + me.pid).catch(() => {}); } return json({ ok: true, off: true, players: [] }); }
+    const lat = +b.lat, lng = +b.lng;
+    if (!fin(lat) || !fin(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return err("Złe współrzędne.");
+    const now = Date.now(), c = cell5(lat, lng), v = { n: me.nick, i: me.icon, lat: +lat.toFixed(3), lng: +lng.toFixed(3), t: now };
+    if (old && old.c !== c) await dropOld(old.c);
+    await put("nm/" + me.pid, { ...v, c });
+    const ix = (await get("nb/" + c)) || {}; ix[me.pid] = v;
+    for (const k of Object.keys(ix)) if (now - ix[k].t > 2 * 3600e3) delete ix[k];
+    await put("nb/" + c, ix);
+    const [cy, cx] = c.split("_").map(Number), keys = [];
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) keys.push("nb/" + (cy + dy) + "_" + (cx + dx));
+    const bl = (await get("bl/" + me.pid)) || {}, out = [];
+    for (const m of await Promise.all(keys.map(get))) for (const [pid, x] of Object.entries(m || {})) {
+      if (pid === me.pid || bl[pid] || now - x.t > 30 * 60e3) continue;
+      const d = km(lat, lng, x.lat, x.lng); if (d <= NEAR_KM) out.push({ code: pid, n: x.n, i: x.i, lat: x.lat, lng: x.lng, t: x.t, km: +d.toFixed(1) });
+    }
+    out.sort((a, b) => a.km - b.km);
+    return json({ ok: true, players: out.slice(0, 100), now });
   },
 
   /* ---------- wioski graczy na mapie ---------- */
