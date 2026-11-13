@@ -1,6 +1,6 @@
 [build]
-  publish = "."
-  command = "echo gotowe"
+  publish = "dist"
+  command = "mkdir -p dist && cp *.html *.js *.png *.jpg *.webp *.webmanifest _headers dist/"
 
 [functions]
   directory = "netlify/functions"
