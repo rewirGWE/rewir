@@ -449,6 +449,26 @@ Object.assign(routes, {
     return json({ ok: true, players: out.slice(0, 100), now });
   },
 
+  /* ---------- moja wioska dla znajomych (dokładne położenie widzą tylko znajomi) ---------- */
+  "POST myvillage": async (req, ip, me) => {
+    if (!me) return err("Brak lub zły kod gracza.", 401);
+    if (limited("mv:" + me.pid, 30, 3600e3)) return err("Za często.", 429);
+    const b = await body(req), num = (x, a, z) => Math.max(a, Math.min(z, Math.round(+x || 0)));
+    if (b.off) { await del("vf/" + me.pid).catch(() => {}); return json({ ok: true }); }
+    const lat = +b.lat, lng = +b.lng;
+    if (!fin(lat) || !fin(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return err("Złe współrzędne.");
+    await put("vf/" + me.pid, { lat: +lat.toFixed(5), lng: +lng.toFixed(5), name: clean(b.name, 30), lvl: num(b.lvl, 1, 999), cells: num(b.cells, 0, 99999),
+      wave: num(b.wave, 0, 99999), wall: num(b.wall, 0, 100), era: clean(b.era, 20), t: Date.now() });
+    return json({ ok: true });
+  },
+  "GET fvillages": async (req, ip, me) => {
+    if (!me) return err("Brak lub zły kod gracza.", 401);
+    const fr = Object.keys((await get("f/" + me.pid)) || {}), now = Date.now();
+    const rows = await Promise.all(fr.map(async pid => { const [p, v, st] = await Promise.all([get("p/" + pid), get("vf/" + pid), get("s/" + pid)]);
+      return p && v ? { code: pid, n: p.nick, i: p.icon, ...v, online: !!(st && now - st.t < ONLINE) } : null; }));
+    return json({ villages: rows.filter(Boolean), now });
+  },
+
   /* ---------- wioski graczy na mapie ---------- */
   "POST village": async (req, ip, me) => {
     if (!me) return err("Brak lub zły kod gracza.", 401);
