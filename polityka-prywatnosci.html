@@ -27,7 +27,7 @@ a{color:var(--acc)}
 </head>
 <body>
 <main>
-<header><img src="icon-192.png" alt=""><div><h1>Polityka prywatności</h1><div class="date">Gra Rewir · obowiązuje od 13 listopada 2026</div></div></header>
+<header><img src="icon-192.png" alt=""><div><h1>Polityka prywatności</h1><div class="date">Gra Rewir · obowiązuje od [DATA STARTU SPRZEDAŻY]</div></div></header>
 
 <div class="card"><b>W skrócie:</b> Rewir nie wymaga konta. Twoja lokalizacja, przejazdy i stan gry są zapisywane w pamięci Twojego telefonu. Jeśli dołączysz do gry online, na serwer gry trafiają tylko: Twoja ksywka i ikonka, trasy, które sam dodasz do rankingu, oraz czasy i prędkości z przejazdów na tych trasach.</div>
 
@@ -48,6 +48,7 @@ a{color:var(--acc)}
 <li><b>Widoczność dla graczy w okolicy (tylko jeśli włączysz „Jestem widoczny dla graczy do 30 km”)</b> – przybliżona pozycja (przesunięta w obrębie kratki ok. 1 km), ksywka i ikonka. Widzą je gracze online w promieniu 30 km, którzy też włączyli widoczność, i mogą do Ciebie napisać. Możesz to wyłączyć w każdej chwili i zablokować dowolnego gracza.</li>
 <li><b>Krótkie linki do wyzwań</b> – gdy wysyłasz wyzwanie, jego treść (trasa, czas, podpis) zapisuje się na serwerze pod krótkim adresem.</li>
 <li><b>Czujnik tętna</b> – tylko jeśli sam go połączysz przez Bluetooth; odczyty zostają w telefonie.</li>
+<li><b>Zakup gry</b> – płatność obsługuje Stripe; numer karty ani dane bankowe nie trafiają do gry. Serwer gry zapisuje: numer płatności ze Stripe, adres e-mail podany przy płatności (do odzyskania kodu i obsługi reklamacji), kwotę, datę, wydany kod gry oraz losowe identyfikatory urządzeń, na których kod aktywowano (najwyżej 3) wraz z datą ostatniego sprawdzenia.</li>
 </ul>
 <p>Gra nie zbiera danych reklamowych, nie używa plików cookie śledzących i nie sprzedaje żadnych danych.</p>
 
@@ -65,12 +66,13 @@ a{color:var(--acc)}
 <tr><td>Open-Meteo</td><td>pogoda</td><td>przybliżone współrzędne</td></tr>
 <tr><td>Overpass API i Nominatim (OpenStreetMap)</td><td>szczyty w okolicy, nazwa nowego toru</td><td>współrzędne punktu</td></tr>
 <tr><td>Cloudflare cdnjs, Google Fonts</td><td>biblioteka mapy i czcionki</td><td>zwykłe zapytanie o plik</td></tr>
-<tr><td>Anthropic (Claude API)</td><td>„Analiza Claude” tras i zakładka „Prezydent”, tylko jeśli wpiszesz własny klucz API</td><td>dane analizowanej trasy (długość, spadek, nachylenia) albo treść rozmowy z Prezydentem i podsumowanie stanu gry</td></tr>
+<tr><td>Anthropic (Claude API)</td><td>„Analiza Claude” tras, tylko jeśli wpiszesz własny klucz API</td><td>dane analizowanej trasy (długość, spadek, nachylenia)</td></tr>
+<tr><td>Stripe</td><td>płatność za grę (BLIK, karta, Przelewy24)</td><td>dane podane na stronie płatności Stripe (m.in. e-mail i dane płatności) – zgodnie z polityką prywatności Stripe</td></tr>
 <tr><td>Netlify</td><td>hosting strony gry i serwer gry online (Netlify Functions i Netlify Blobs)</td><td>standardowe dane połączenia (adres IP, przeglądarka); przy grze online także dane opisane w punkcie 2</td></tr>
 </table>
 
 <h2>5. Jak długo przechowujemy dane</h2>
-<p>Dane leżą w Twoim telefonie, dopóki ich nie usuniesz. Dane gry online są przechowywane, dopóki gra działa albo dopóki nie poprosisz o ich usunięcie (napisz na adres z punktu 1 i podaj swoją ksywkę). Gra robi też automatyczne kopie zapisu w pamięci telefonu (co 30 minut i co tydzień).</p>
+<p>Dane leżą w Twoim telefonie, dopóki ich nie usuniesz. Dane gry online są przechowywane, dopóki gra działa albo dopóki nie poprosisz o ich usunięcie (napisz na adres z punktu 1 i podaj swoją ksywkę). Gra robi też automatyczne kopie zapisu w pamięci telefonu (co 30 minut i co tydzień). Dane zakupu (e-mail, numer płatności, kod) przechowujemy przez okres wymagany przepisami podatkowymi i rachunkowymi oraz na potrzeby reklamacji.</p>
 
 <h2>6. Jak usunąć dane</h2>
 <ul>

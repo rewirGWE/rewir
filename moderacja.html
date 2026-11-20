@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Moderacja – Rewir</title>
+<style>
+:root{--bg:#f4f6f4;--ink:#13201b;--muted:#566660;--line:#d6ddd9;--acc:#e8420f;--card:#fff}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1714;--ink:#e8eee9;--muted:#9fb0a8;--line:#2a3833;--card:#16211d}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:760px;margin:0 auto;padding:20px 16px 60px}
+h1{font-size:24px;margin:0 0 12px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+input{flex:1;min-width:0;min-height:44px;border:1px solid var(--line);border-radius:10px;padding:0 12px;background:var(--card);color:var(--ink);font:inherit}
+button{min-height:44px;border:0;border-radius:10px;padding:0 14px;font:600 14px system-ui,sans-serif;background:var(--ink);color:var(--bg);cursor:pointer}
+button.alt{background:transparent;color:var(--ink);border:1px solid var(--line)}
+button.bad{background:var(--acc);color:#fff}
+.it{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin:10px 0}
+.it .lb{font-weight:600;word-break:break-word}.it .mu,.mu{color:var(--muted);font-size:13px}
+.tag{display:inline-block;font-size:12px;font-weight:700;padding:1px 7px;border-radius:6px;background:var(--line);margin-right:6px}
+.hid{color:var(--acc);font-weight:700}
+</style>
+</head>
+<body>
+<main>
+<h1>Moderacja Rewiru</h1>
+<p class="mu">Zgłoszenia graczy. Treść znika sama po 3 zgłoszeniach od różnych osób; tutaj możesz ją przywrócić, ukryć od razu albo odrzucić zgłoszenie. Klucz moderatora ustawiasz w Netlify jako zmienną ADMIN_KEY (co najmniej 12 znaków).</p>
+<div class="row"><input id="k" type="password" placeholder="Klucz moderatora" autocomplete="off"><button id="go">Wczytaj</button></div>
+<p class="mu" id="st" role="status"></p>
+<div id="list"></div>
+<p style="margin-top:24px"><button class="alt" id="rg">Przelicz ranking okolicy dla wszystkich tras</button></p>
+</main>
+<script>
+const $=s=>document.querySelector(s),T={p:'Gracz',t:'Trasa',m:'Czat'};
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+try{$('#k').value=sessionStorage.getItem('rwMod')||'';}catch(e){}
+async function load(){
+  const k=$('#k').value.trim();try{sessionStorage.setItem('rwMod',k);}catch(e){}
+  $('#st').textContent='Wczytuję…';
+  const r=await fetch('/api/mod?klucz='+encodeURIComponent(k),{cache:'no-store'});const j=await r.json().catch(()=>({}));
+  if(!r.ok){$('#st').textContent=j.error||'Błąd '+r.status;$('#list').innerHTML='';return;}
+  const H=j.hidden||{p:{},t:{},m:{}};
+  $('#st').textContent=j.reports.length?'Zgłoszeń: '+j.reports.length:'Brak zgłoszeń.';
+  $('#list').innerHTML=j.reports.map(x=>{const hid=!!(H[x.typ]||{})[x.id];
+    return '<div class="it"><div><span class="tag">'+T[x.typ]+'</span>'+(hid?'<span class="hid">ukryte</span>':'')+'</div><div class="lb">'+esc(x.label)+'</div>'+
+      '<div class="mu">'+x.n+' zgłosz. · '+esc(x.why)+' · '+new Date(x.t).toLocaleString('pl-PL')+' · id '+esc(x.id)+'</div>'+
+      '<div class="row" style="margin-top:8px">'+(hid?'<button class="alt" data-a="pokaz" data-t="'+x.typ+'" data-i="'+esc(x.id)+'">Przywróć</button>':'<button class="bad" data-a="ukryj" data-t="'+x.typ+'" data-i="'+esc(x.id)+'">Ukryj</button>')+
+      '<button class="alt" data-a="odrzuc" data-t="'+x.typ+'" data-i="'+esc(x.id)+'">Odrzuć zgłoszenie</button></div></div>';}).join('');
+}
+async function act(co,typ,id){
+  const r=await fetch('/api/mod',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({klucz:$('#k').value.trim(),co,typ,id})});
+  const j=await r.json().catch(()=>({}));if(!r.ok){$('#st').textContent=j.error||'Błąd';return;}
+  if(co==='region'){$('#st').textContent='Przeliczono trasy: '+j.tracks;return;}load();
+}
+$('#go').onclick=load;$('#k').addEventListener('keydown',e=>{if(e.key==='Enter')load();});
+$('#list').onclick=e=>{const b=e.target.closest('[data-a]');if(b)act(b.dataset.a,b.dataset.t,b.dataset.i);};
+$('#rg').onclick=()=>act('region','p','x');
+</script>
+</body>
+</html>

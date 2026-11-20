@@ -1,9 +1,10 @@
-/* Rewir – plik offline (service worker).
+/* Rewir – plik offline (service worker). v187: three.js w pamięci telefonu.
    Strona gry: najpierw internet (żeby nowe wersje przychodziły od razu), bez sieci kopia z telefonu.
    Mapy pobrane w „Mapy offline” podawane są z pamięci telefonu. */
-const SHELL='linia-shell-v1',STATIC='linia-static-v1',TILES='linia-tiles-v1';
+const SHELL='linia-shell-v1',STATIC='linia-static-v3',TILES='linia-tiles-v1';
 const LOCAL=['./','manifest.webmanifest','icon-192.png','icon-512.png','icon-maskable-512.png','apple-touch-icon.png','favicon.png','polityka-prywatnosci.html'];
-const CDN=['https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css','https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js'];
+const CDN=['https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css','https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js'];   /* v187: grafika 3D (trasa 3D, modele budynków) też działa bez internetu */
 self.addEventListener('install',e=>{
   e.waitUntil((async()=>{
     const s=await caches.open(SHELL);await Promise.all(LOCAL.map(u=>s.add(new Request(u,{cache:'reload'})).catch(()=>{})));
@@ -56,4 +57,16 @@ self.addEventListener('fetch',e=>{
     return;
   }
   /* pozostałe (pogoda, wysokości, AI): zwykły internet */
+});
+
+/* v190: powiadomienia push (rekord, wiadomość, znajomy, zaproszenie na zjazd) */
+self.addEventListener('push',e=>{
+  let d={};try{d=e.data?e.data.json():{};}catch(_){d={title:'Rewir',body:e.data?e.data.text():''};}
+  e.waitUntil(self.registration.showNotification(d.title||'Rewir',{body:d.body||'',tag:d.tag||'rewir',renotify:true,icon:'icon-192.png',badge:'favicon.png',data:{url:d.url||'/'}}));
+});
+self.addEventListener('notificationclick',e=>{
+  e.notification.close();const url=new URL((e.notification.data&&e.notification.data.url)||'/',self.location.origin).href;
+  e.waitUntil(clients.matchAll({type:'window',includeUncontrolled:true}).then(list=>{
+    for(const c of list){if(c.url.startsWith(self.location.origin)&&'focus' in c){c.navigate&&c.navigate(url).catch(()=>{});return c.focus();}}
+    return clients.openWindow(url);}));
 });

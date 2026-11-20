@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Kup Rewir – gra dla rowerzystów</title>
+<meta name="description" content="Rewir: aplikacja dla rowerzystów MTB i DH połączona z grą. Twoje prawdziwe zjazdy napędzają bazę, która broni się przed zombie. 19 zł jednorazowo, 3 dni za darmo.">
+<meta name="theme-color" content="#122019">
+<meta property="og:title" content="Rewir – jeździsz rowerem, bronisz bazy przed zombie">
+<meta property="og:description" content="Gra i aplikacja dla rowerzystów MTB i DH. 19 zł jednorazowo, bez reklam i abonamentu.">
+<meta property="og:image" content="https://rewir-gra.netlify.app/og.jpg">
+<link rel="icon" href="favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap">
+<style>
+:root{--pine:#122019;--pine2:#1b2f24;--ridge:#2e4a37;--bone:#efe9dc;--mute:#a9bbad;--yel:#f2c14e;--red:#e8420f;--ink:#1a1a1a;
+  --fd:"Barlow Condensed","Arial Narrow",sans-serif;--fb:Barlow,system-ui,sans-serif}
+*{box-sizing:border-box}
+html{background:var(--pine)}
+body{margin:0;color:var(--bone);font:400 17px/1.55 var(--fb);background:linear-gradient(180deg,#0e1a14 0,var(--pine) 520px,#0d1611 100%);-webkit-font-smoothing:antialiased}
+a{color:var(--yel)}
+.wrap{max-width:1040px;margin:0 auto;padding:0 20px}
+:focus-visible{outline:3px solid var(--yel);outline-offset:3px}
+/* nagłówek */
+.top{display:flex;align-items:center;justify-content:space-between;padding:18px 0}
+.mark{font:700 26px var(--fd);letter-spacing:.08em;color:var(--yel);text-decoration:none}
+.top a.play{font:600 15px var(--fb);color:var(--bone);text-decoration:none;border-bottom:1px solid rgba(239,233,220,.35)}
+/* hero */
+.hero{position:relative;display:grid;grid-template-columns:1.15fr .85fr;gap:36px;align-items:center;padding:28px 0 0}
+.hero h1{font:700 clamp(46px,8vw,86px)/.95 var(--fd);margin:0 0 18px;letter-spacing:.005em}
+.hero h1 span{display:block;color:var(--mute)}
+.lead{max-width:34em;color:#d3ddd5;margin:0 0 26px;font-size:18px}
+.ridge{position:absolute;left:-20px;bottom:-1px;width:calc(100% + 40px);height:150px;z-index:-1;opacity:.9}
+/* tabliczka startowa z ceną */
+.plate{background:var(--bone);color:var(--ink);border-radius:18px;padding:18px 20px 20px;max-width:380px;box-shadow:0 18px 50px rgba(0,0,0,.45);position:relative}
+.plate::before,.plate::after{content:"";position:absolute;top:14px;width:12px;height:12px;border-radius:50%;background:var(--pine);box-shadow:inset 0 2px 3px rgba(0,0,0,.5)}
+.plate::before{left:14px}.plate::after{right:14px}
+.plate .no{display:flex;align-items:baseline;justify-content:center;gap:10px;font:700 92px/1 var(--fd);letter-spacing:-.01em;margin:6px 0 2px}
+.plate .no small{font:600 24px var(--fd);color:#5b5b5b}
+.plate .sub{text-align:center;font:600 15px var(--fb);color:#4a4a4a;margin:0 0 14px}
+.btn{display:flex;align-items:center;justify-content:center;width:100%;min-height:56px;border:0;border-radius:14px;background:var(--red);color:#fff;font:700 21px var(--fb);text-decoration:none;cursor:pointer}
+.btn[aria-disabled=true]{background:#8a8a8a;cursor:not-allowed}
+.pay{margin:10px 0 0;text-align:center;font:500 13.5px var(--fb);color:#555}
+.try{margin:16px 0 0;font:500 15px var(--fb);color:var(--mute)}
+.try a{color:var(--bone)}
+/* po zakupie */
+.done{display:none}.bought .done{display:block}.bought .sell{display:none}
+.code{font:700 clamp(21px,6.6vw,34px)/1.1 ui-monospace,Menlo,monospace;white-space:nowrap;letter-spacing:.04em;text-align:center;background:#fff;border:2px dashed #b9b1a0;border-radius:12px;padding:14px 8px;margin:4px 0 12px;user-select:all;}
+.row2{display:flex;gap:8px}.row2 .btn{font-size:17px}.ghost{background:transparent;color:var(--ink);border:2px solid var(--ink)}
+.state{font:600 15px var(--fb);text-align:center;margin:8px 0 0;color:#4a4a4a}.state.bad{color:#b3261e}
+/* zrzuty */
+.shots{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin:84px 0 0}
+.shots figure{margin:0}
+.shots img{display:block;width:100%;aspect-ratio:9/16;object-fit:cover;border-radius:22px;border:1px solid rgba(239,233,220,.12);box-shadow:0 12px 30px rgba(0,0,0,.4);background:var(--pine2)}
+.shots figcaption{font:600 15px/1.3 var(--fb);margin:10px 2px 0;color:#d3ddd5}
+/* treść */
+section.blk{padding:72px 0 0}
+h2{font:700 44px/1 var(--fd);margin:0 0 22px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:28px 40px}
+.feat h3{font:700 24px/1.1 var(--fd);margin:0 0 6px;color:var(--bone)}
+.feat p{margin:0;color:#c3cfc6}
+.feat{padding-left:18px;border-left:3px solid var(--ridge)}
+.feat.y{border-color:var(--yel)}.feat.r{border-color:var(--red)}
+ol.steps{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:repeat(3,1fr);gap:20px;counter-reset:s}
+ol.steps li{counter-increment:s;background:var(--pine2);border-radius:16px;padding:18px}
+ol.steps li::before{content:counter(s);display:block;font:700 40px/1 var(--fd);color:var(--yel);margin:0 0 6px}
+ol.steps b{display:block;font:700 22px var(--fd);margin:0 0 4px}
+ol.steps span{color:#c3cfc6;font-size:16px}
+details{border-top:1px solid rgba(239,233,220,.14);padding:14px 0}
+details:last-of-type{border-bottom:1px solid rgba(239,233,220,.14)}
+summary{cursor:pointer;font:600 18px var(--fb);list-style:none;display:flex;justify-content:space-between;gap:12px}
+summary::after{content:"+";color:var(--yel);font:700 24px/1 var(--fd)}
+details[open] summary::after{content:"–"}
+details p{margin:10px 0 0;color:#c3cfc6;max-width:46em}
+footer{margin:80px 0 0;padding:26px 0 calc(30px + env(safe-area-inset-bottom,0px));border-top:1px solid rgba(239,233,220,.12);font:500 14px var(--fb);color:var(--mute);display:flex;flex-wrap:wrap;gap:8px 22px}
+footer a{color:var(--mute)}
+@media (max-width:820px){
+  .hero{grid-template-columns:1fr;gap:26px;padding-top:10px}
+  .plate{max-width:none}
+  .shots{grid-template-columns:repeat(4,72%);overflow-x:auto;scroll-snap-type:x mandatory;margin:56px -20px 0;padding:0 20px 6px}
+  .shots figure{scroll-snap-align:start}
+  .two{grid-template-columns:1fr}
+  ol.steps{grid-template-columns:1fr}
+  h2{font-size:38px}
+}
+@media (prefers-reduced-motion:no-preference){.plate{animation:in .5s ease-out both}@keyframes in{from{transform:translateY(14px);opacity:0}to{transform:none;opacity:1}}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top"><a class="mark" href="./">REWIR</a><a class="play" href="./">Otwórz grę</a></header>
+
+  <main>
+  <div class="hero" id="hero">
+    <div>
+      <h1>Jeździsz rowerem.<span>Bronisz bazy przed zombie.</span></h1>
+      <p class="lead">Rewir to aplikacja dla rowerzystów MTB i DH połączona z grą. Nagrywasz prawdziwe zjazdy, bijesz rekordy na swoich trasach, a każdy przejechany kilometr wzmacnia Twoją bazę w świecie po apokalipsie.</p>
+      <p class="try">Najpierw sprawdź: pierwsze 3 dni są za darmo. <a href="./">Otwórz grę</a></p>
+    </div>
+
+    <div class="plate" aria-live="polite">
+      <div class="sell">
+        <div class="no">19 zł <small>raz</small></div>
+        <p class="sub">Bez reklam, bez abonamentu. Jeden kod na 3 urządzenia.</p>
+        <a class="btn" id="buy" href="#">Kup za 19 zł</a>
+        <p class="pay">BLIK, karta albo Przelewy24. Płatność obsługuje Stripe.</p>
+      </div>
+      <div class="done">
+        <p class="sub" style="margin-top:10px">Dziękuję za zakup! Twój kod:</p>
+        <div class="code" id="code">…</div>
+        <div class="row2"><a class="btn" id="open" href="./">Odblokuj grę</a><button class="btn ghost" id="copy" type="button">Kopiuj</button></div>
+        <p class="state" id="st">Zapisz kod albo zrób zrzut ekranu. Wpiszesz go na innym telefonie.</p>
+      </div>
+    </div>
+    <svg class="ridge" viewBox="0 0 1000 150" preserveAspectRatio="none" aria-hidden="true"><path fill="#17281f" d="M0 150V96l70-30 40 22 70-60 50 40 60-28 70 46 60-70 45 34 70-26 60 50 70-62 60 44 70-18 60 30 75-40 70 34V150z"/><path fill="#1d3226" d="M0 150v-26l90-26 70 18 90-34 80 30 90-20 70 22 100-30 80 24 90-16 80 20 70-14 70 18v34z"/></svg>
+  </div>
+
+  <div class="shots">
+    <figure><img src="kup-trasa.webp" alt="Zjazd w 3D z rywalami i międzyczasami" loading="lazy" width="540" height="960"><figcaption>Każdy zjazd odtworzysz w 3D</figcaption></figure>
+    <figure><img src="kup-baza.webp" alt="Baza otoczona murem, zombie atakują od północy" loading="lazy" width="540" height="960"><figcaption>Zombie atakują Twoją bazę</figcaption></figure>
+    <figure><img src="kup-budynki.webp" alt="Młyn w trójwymiarowym podglądzie, poziom III" loading="lazy" width="540" height="960"><figcaption>Budynki 3D z trzema poziomami</figcaption></figure>
+    <figure><img src="kup-tydzien.webp" alt="Podsumowanie tygodnia: kilometry, zjazdy i pokonane zombie" loading="lazy" width="540" height="960"><figcaption>Twój tydzień do relacji</figcaption></figure>
+  </div>
+
+  <section class="blk" aria-labelledby="h-co">
+    <h2 id="h-co">Co dostajesz</h2>
+    <div class="two">
+      <div class="feat y"><h3>Narzędzia do jazdy</h3><p>Nagrywanie przejazdów GPS, trasy z rekordami i lotnym startem, komunikaty głosowe na starcie i mecie, mapy offline do lasu.</p></div>
+      <div class="feat r"><h3>Baza w apokalipsie</h3><p>Budujesz i ulepszasz budynki 3D, odpierasz fale zombie, a lądowisko z Apachem broni Twoich tras.</p></div>
+      <div class="feat"><h3>Mistrzostwa z rywalami</h3><p>Dziewiętnastu wirtualnych zawodników, kwalifikacje i wyścig w niedzielę, klasyfikacja generalna na Twoich trasach.</p></div>
+      <div class="feat"><h3>Rzeczy do pokazania</h3><p>Film z przejazdu w 3D, grafika tygodnia na TikToka i Instagrama, wyzwania dla znajomych linkiem.</p></div>
+    </div>
+  </section>
+
+  <section class="blk" aria-labelledby="h-jak">
+    <h2 id="h-jak">Jak kupić</h2>
+    <ol class="steps">
+      <li><b>Płacisz 19 zł</b><span>BLIK, kartą albo Przelewy24 na bezpiecznej stronie Stripe.</span></li>
+      <li><b>Dostajesz kod</b><span>Pojawi się od razu tutaj, w postaci RW-XXXX-XXXX-XXXX.</span></li>
+      <li><b>Gra się odblokowuje</b><span>Jednym przyciskiem na tym telefonie. Na innym wpisujesz ten sam kod.</span></li>
+    </ol>
+  </section>
+
+  <section class="blk" aria-labelledby="h-faq">
+    <h2 id="h-faq">Pytania</h2>
+    <details><summary>Czy działa na iPhonie i Androidzie?</summary><p>Tak. Rewir działa w przeglądarce telefonu. W Safari albo Chrome wybierz „Dodaj do ekranu początkowego”, a gra otworzy się jak zwykła aplikacja.</p></details>
+    <details><summary>Co daje okres próbny?</summary><p>Przez 3 dni od pierwszego uruchomienia masz całą grę bez ograniczeń. Po zakupie wszystko, co zbudujesz w próbie, zostaje.</p></details>
+    <details><summary>Na ilu urządzeniach mogę grać?</summary><p>Jeden kod działa na 3 urządzeniach. Jeśli zmienisz telefon, miejsce po starym zwolni się samo po 30 dniach jego nieużywania.</p></details>
+    <details><summary>Czy potrzebuję internetu w lesie?</summary><p>Nie. Nagrywanie przejazdów i gra działają bez zasięgu, a mapy możesz pobrać wcześniej na Wi-Fi. Internet jest potrzebny tylko do zakupu i funkcji online.</p></details>
+    <details><summary>Zgubiłem kod. Co teraz?</summary><p>Kod jest zapisany w grze: Więcej → Pomoc. Jeśli go tam nie ma, napisz do mnie z adresu e-mail podanego przy płatności.</p></details>
+    <details><summary>Czy mogę zwrócić grę?</summary><p>Zasady zwrotu opisuje <a href="regulamin.html">regulamin</a>.</p></details>
+  </section>
+  </main>
+
+  <footer><span>© Rewir</span><a href="regulamin.html">Regulamin</a><a href="polityka-prywatnosci.html">Polityka prywatności</a><span id="kontakt"></span></footer>
+</div>
+
+<script>
+/* ===== USTAWIENIA (uzupełnij przed startem sprzedaży) =====
+   STRIPE_LINK: adres linku płatności ze Stripe (https://buy.stripe.com/…)
+   W Stripe, w ustawieniach linku → „Po płatności” → „Nie pokazuj strony potwierdzenia, przekieruj klienta”:
+   https://rewir-gra.netlify.app/kup.html?sesja={CHECKOUT_SESSION_ID}
+   KONTAKT: adres e-mail do kupujących (pokazywany w stopce) */
+const STRIPE_LINK = "";
+const KONTAKT = "";
+
+(function(){
+  const $=s=>document.querySelector(s);
+  const buy=$('#buy');
+  const pol=(new URLSearchParams(location.search).get('pol')||'').toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,10);
+  if(pol.length===10){const n=document.createElement('p');n.className='pay';n.style.cssText='margin-top:8px;font-weight:600;color:#7a5a00';n.textContent='🎁 Kupujesz z polecenia znajomego: oboje dostaniecie po 200 monet w grze.';buy.parentNode.appendChild(n);}
+  if(STRIPE_LINK){buy.href=STRIPE_LINK+(pol.length===10?(STRIPE_LINK.includes('?')?'&':'?')+'client_reference_id='+pol:'');}
+  else{buy.textContent='Sprzedaż rusza wkrótce';buy.setAttribute('aria-disabled','true');buy.removeAttribute('href');}
+  if(KONTAKT){const k=$('#kontakt');const a=document.createElement('a');a.href='mailto:'+KONTAKT;a.textContent='Kontakt: '+KONTAKT;k.appendChild(a);}
+
+  /* powrót ze Stripe: kup.html?sesja=cs_… */
+  const sesja=new URLSearchParams(location.search).get('sesja');
+  if(!sesja)return;
+  const hero=$('#hero'),st=$('#st'),code=$('#code');hero.classList.add('bought');
+  const show=(msg,bad)=>{st.textContent=msg;st.className='state'+(bad?' bad':'');};
+  let tries=0;
+  async function fetchCode(){
+    show('Sprawdzam płatność…');
+    try{
+      const r=await fetch('/api/zakup?sesja='+encodeURIComponent(sesja),{cache:'no-store'});const j=await r.json().catch(()=>({}));
+      if(r.ok&&j.kod){
+        code.textContent=j.kod;$('#open').href='./#kod='+j.kod;
+        try{localStorage.setItem('linia.kupKod',j.kod);}catch(e){}
+        show('Zapisz kod albo zrób zrzut ekranu. Wpiszesz go na innym telefonie.');return;}
+      if(r.status===402&&tries++<6){show('Bank jeszcze potwierdza płatność… sprawdzę ponownie za chwilę.');setTimeout(fetchCode,4000);return;}
+      code.textContent='—';show(j.error||'Nie udało się pobrać kodu. Odśwież stronę za chwilę.',true);
+    }catch(e){code.textContent='—';show('Brak połączenia. Odśwież stronę, gdy wróci internet. Płatność jest zapisana.',true);}
+  }
+  $('#copy').onclick=async()=>{try{await navigator.clipboard.writeText(code.textContent);$('#copy').textContent='Skopiowano';setTimeout(()=>$('#copy').textContent='Kopiuj',1600);}catch(e){}};
+  fetchCode();
+})();
+</script>
+</body>
+</html>
