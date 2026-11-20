@@ -70,15 +70,26 @@ const pub = p => ({ pid: p.pid, nick: p.nick, icon: p.icon });
 
 function sortTimes(lb, me) {
   const a = Object.entries(lb.times || {}).map(([pid, x]) => ({ pid, ...x })).sort((x, y) => x.t - y.t || x.d - y.d);
-  return { list: a.slice(0, TOP).map(({ pid, ...x }) => ({ ...x, me: pid === me || undefined })), n: a.length, rank: me ? a.findIndex(x => x.pid === me) + 1 : 0 };
+  return { list: a.slice(0, TOP).map(({ pid, ...x }) => ({ ...x, n: showN(pid, x.n), me: pid === me || undefined })), n: a.length, rank: me ? a.findIndex(x => x.pid === me) + 1 : 0 };
 }
 function sortSpeed(obj, me) {
   const a = Object.entries(obj || {}).map(([pid, x]) => ({ pid, ...x })).sort((x, y) => y.v - x.v || x.d - y.d);
-  return { list: a.slice(0, TOP).map(({ pid, ...x }) => ({ ...x, me: pid === me || undefined })), n: a.length, rank: me ? a.findIndex(x => x.pid === me) + 1 : 0 };
+  return { list: a.slice(0, TOP).map(({ pid, ...x }) => ({ ...x, n: showN(pid, x.n), me: pid === me || undefined })), n: a.length, rank: me ? a.findIndex(x => x.pid === me) + 1 : 0 };
+}
+/* ---------- Król zjazdu: najlepszy czas tygodnia (od poniedziałku, czas polski) ---------- */
+export function weekKey(t) {
+  const x = new Date(t + 3600e3), dow = (x.getUTCDay() + 6) % 7;
+  return new Date(Date.UTC(x.getUTCFullYear(), x.getUTCMonth(), x.getUTCDate() - dow)).toISOString().slice(0, 10);
+}
+function kingOf(lb, now) {
+  const w = lb && lb.week; if (!w || w.wk !== weekKey(now || Date.now())) return null;
+  let best = null; for (const [pid, x] of Object.entries(w.times || {})) if (!best || x.t < best.t || (x.t === best.t && x.d < best.d)) best = { pid, ...x };
+  return best;
 }
 function trackSum(tr, lb) {
   const T = sortTimes(lb || {}), V = sortSpeed((lb || {}).speed);
-  return { rid: tr.rid, name: tr.name, len: tr.len, drop: tr.drop, s: tr.wps[0], n: T.n,
+  const K = kingOf(lb);
+  return { rid: tr.rid, name: tr.name, len: tr.len, drop: tr.drop, s: tr.wps[0], n: T.n, king: K ? { n: showN(K.pid, K.n), i: K.i, t: K.t } : null,
     best: T.list[0] ? { t: T.list[0].t, n: T.list[0].n, i: T.list[0].i } : null,
     top: V.list[0] ? { v: V.list[0].v, n: V.list[0].n, i: V.list[0].i } : null };
 }
@@ -89,6 +100,7 @@ async function updIndex(tr, lb) {
   if (i >= 0) ix[i] = sum; else ix.push(sum);
   ix.sort((a, b) => b.n - a.n);
   await put(key, ix.slice(0, 300));
+  await updRegion(tr, lb);
 }
 
 /* ---------- obsługa ---------- */
@@ -163,7 +175,7 @@ const routes = {
     const k = 111320, c = Math.cos(lat * Math.PI / 180);
     all.forEach(t => t.dist = Math.round(Math.hypot((t.s[0] - lat) * k, (t.s[1] - lng) * k * c)));
     all.sort((a, b) => a.dist - b.dist);
-    return json({ tracks: all.slice(0, 40) });
+    return json({ tracks: all.filter(t => !HID.t[t.rid]).map(t => HID.t[t.rid] ? t : t).slice(0, 40) });
   },
 
   /* przejazdy i rankingi */
@@ -179,7 +191,21 @@ const routes = {
     let newT = false, newV = false;
     if (!ck.time && (!cur || run.t < cur.t)) { lb.times[me.pid] = { t: +run.t.toFixed(2), v, n: me.nick, i: me.icon, d: run.d }; newT = true; }
     if (!ck.speed && (!lb.speed[me.pid] || v > lb.speed[me.pid].v)) { lb.speed[me.pid] = { v, n: me.nick, i: me.icon, d: run.d }; newV = true; }
-    if (newT || newV) { await put("lb/" + rid, lb); await updIndex(tr, lb); }
+    // Król zjazdu (tydzień)
+    const nowW = Date.now(), wk = weekKey(nowW), oldK = kingOf(lb, nowW);
+    let newW = false, newKing = false;
+    if (!lb.week || lb.week.wk !== wk) lb.week = { wk, times: {} };
+    if (!ck.time && weekKey(run.d) === wk) {
+      const cw = lb.week.times[me.pid];
+      if (!cw || run.t < cw.t) { lb.week.times[me.pid] = { t: +run.t.toFixed(2), n: me.nick, i: me.icon, d: run.d }; newW = true; }
+    }
+    const K = kingOf(lb, nowW);
+    if (newW && K && K.pid === me.pid && (!oldK || oldK.pid !== me.pid)) {
+      newKing = true;
+      const kg = (await get("kg/" + me.pid)) || {}; kg[rid] = { wk, name: tr.name }; await put("kg/" + me.pid, kg);
+      if (oldK) { const og = (await get("kg/" + oldK.pid)) || {}; if (og[rid]) { delete og[rid]; await put("kg/" + oldK.pid, og); } }
+    }
+    if (newT || newV || newW) { await put("lb/" + rid, lb); await updIndex(tr, lb); }
     // zawody online na tej trasie
     const now = Date.now(), act = [];
     for (const cid of tr.cs || []) {
@@ -200,12 +226,16 @@ const routes = {
       }
     }
     const T = sortTimes(lb, me.pid), V = sortSpeed(lb.speed, me.pid);
-    return json({ ok: true, grp, newT, newV, rejected: ck.time || ck.speed ? ck : null, rankT: T.rank, rankV: V.rank, n: T.n, nV: V.n });
+    return json({ ok: true, grp, newT, newV, rejected: ck.time || ck.speed ? ck : null, rankT: T.rank, rankV: V.rank, n: T.n, nV: V.n,
+      newKing, king: K ? { n: showN(K.pid, K.n), i: K.i, t: K.t, me: K.pid === me.pid || undefined } : null, dethroned: newKing && oldK ? showN(oldK.pid, oldK.n) : undefined });
   },
   "GET lb": async (req, ip, me, arg) => {
     const rid = +arg, tr = await get("t/" + rid); if (!tr) return err("Tej trasy nie ma w rankingu online.", 404);
     const lb = (await get("lb/" + rid)) || {}, pid = me && me.pid;
-    return json({ rid, name: tr.name, len: tr.len, drop: tr.drop, times: sortTimes(lb, pid), speed: sortSpeed(lb.speed, pid) });
+    const K = kingOf(lb), wk = weekKey(Date.now());
+    const week = lb.week && lb.week.wk === wk ? sortTimes({ times: lb.week.times }, pid) : { list: [], n: 0, rank: 0 };
+    return json({ rid, name: HID.t[rid] ? "Trasa ukryta po zgłoszeniach" : tr.name, len: tr.len, drop: tr.drop, times: sortTimes(lb, pid), speed: sortSpeed(lb.speed, pid),
+      king: K ? { n: showN(K.pid, K.n), i: K.i, t: K.t, me: K.pid === pid || undefined } : null, week, hidden: !!HID.t[rid] || undefined });
   },
 
   /* krótkie linki do wyzwań */
@@ -443,7 +473,7 @@ Object.assign(routes, {
     const bl = (await get("bl/" + me.pid)) || {}, out = [];
     for (const m of await Promise.all(keys.map(get))) for (const [pid, x] of Object.entries(m || {})) {
       if (pid === me.pid || bl[pid] || now - x.t > 30 * 60e3) continue;
-      const d = km(lat, lng, x.lat, x.lng); if (d <= NEAR_KM) out.push({ code: pid, n: x.n, i: x.i, lat: x.lat, lng: x.lng, t: x.t, km: +d.toFixed(1) });
+      const d = km(lat, lng, x.lat, x.lng); if (d <= NEAR_KM) out.push({ code: pid, n: showN(pid, x.n), i: x.i, lat: x.lat, lng: x.lng, t: x.t, km: +d.toFixed(1) });
     }
     out.sort((a, b) => a.km - b.km);
     return json({ ok: true, players: out.slice(0, 100), now });
@@ -493,10 +523,342 @@ Object.assign(routes, {
     for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) keys.push("vx/" + (cy + dy) + "_" + (cx + dx));
     const now = Date.now(), out = [];
     for (const ix of await Promise.all(keys.map(get))) for (const [pid, v] of Object.entries(ix || {}))
-      if (now - v.t < 30 * 864e5) out.push({ ...v, me: me && pid === me.pid || undefined });
+      if (now - v.t < 30 * 864e5) out.push({ ...v, n: showN(pid, v.n), me: me && pid === me.pid || undefined });
     return json({ villages: out.slice(0, 200), now });
   },
 });
+
+routes["GET crowns"] = async (req, ip, me) => {
+  if (!me) return err("Brak lub zły kod gracza.", 401);
+  const kg = (await get("kg/" + me.pid)) || {}, wk = weekKey(Date.now()), out = [];
+  for (const [rid, x] of Object.entries(kg)) if (x.wk === wk) out.push({ rid: +rid, name: x.name });
+  return json({ crowns: out, wk });
+};
+
+/* ---------- usunięcie konta i wszystkich danych gracza (RODO) ---------- */
+routes["POST forget"] = async (req, ip, me) => {
+  if (!me) return err("Brak lub zły kod gracza.", 401);
+  if (limited("fg:" + ip, 5, 3600e3)) return err("Za dużo prób. Spróbuj za godzinę.", 429);
+  const b = await body(req); if (b.confirm !== "USUN") return err("Brak potwierdzenia.");
+  const pid = me.pid, quiet = p => p.catch(() => {});
+  // znajomi i nieprzeczytane
+  const fr = (await get("f/" + pid)) || {};
+  for (const fp of Object.keys(fr)) { const c = (await get("f/" + fp)) || {}; if (c[pid]) { delete c[pid]; await put("f/" + fp, c); } }
+  // rozmowy: moje wiadomości i ślad nieprzeczytanych u innych
+  for (const k of await listKeys("cm/")) {
+    const parts = k.split("/"), pr = (parts[1] || "").split("_");
+    if (!pr.includes(pid)) continue;
+    if (parts[2] === pid) await quiet(del(k));
+    const other = pr[0] === pid ? pr[1] : pr[0], u = (await get("cu/" + other)) || {};
+    if (u[pid]) { delete u[pid]; await put("cu/" + other, u); }
+  }
+  // grupy
+  for (const gid of (await get("pg/" + pid)) || []) {
+    const g = await get("g/" + gid); if (!g) continue;
+    delete g.members[pid]; await quiet(del("gp/" + gid + "/" + pid)); await quiet(del("gr/" + gid + "/" + pid));
+    const left = Object.keys(g.members);
+    if (!left.length) { await quiet(del("g/" + gid)); continue; }
+    if (g.owner === pid) { g.owner = left[0]; g.ownerNick = g.members[left[0]].n; }
+    await put("g/" + gid, g);
+  }
+  // gracze w okolicy i wioski na mapie
+  const nm = await get("nm/" + pid); if (nm) { const ix = (await get("nb/" + nm.c)) || {}; if (ix[pid]) { delete ix[pid]; await put("nb/" + nm.c, ix); } }
+  const v = await get("v/" + pid); if (v) { const ix = (await get("vx/" + v.c)) || {}; if (ix[pid]) { delete ix[pid]; await put("vx/" + v.c, ix); } }
+  // rankingi i zawody
+  for (const k of await listKeys("lb/")) {
+    const lb = await get(k); if (!lb) continue; let ch = false;
+    if (lb.times && lb.times[pid]) { delete lb.times[pid]; ch = true; }
+    if (lb.speed && lb.speed[pid]) { delete lb.speed[pid]; ch = true; }
+    if (lb.week && lb.week.times && lb.week.times[pid]) { delete lb.week.times[pid]; ch = true; }
+    if (ch) { await put(k, lb); const tr = await get("t/" + k.slice(3)); if (tr) await updIndex(tr, lb); }
+  }
+  for (const k of await listKeys("cr/")) { const cr = await get(k); if (cr && cr[pid]) { delete cr[pid]; await put(k, cr); } }
+  // trasy gracza zostają w rankingu innych, ale bez autora
+  for (const k of await listKeys("t/")) { const tr = await get(k); if (tr && tr.owner === pid) { tr.owner = null; tr.ownerNick = ""; await put(k, tr); } }
+  for (const k of await listKeys("c/")) { const c = await get(k); if (c && c.owner === pid) { c.owner = null; c.ownerNick = ""; await put(k, c); } }
+  // własne klucze
+  const key = normKey(req.headers.get("x-rewir-key"));
+  for (const k of ["kg/", "f/", "cu/", "bl/", "nm/", "v/", "vf/", "pg/", "s/", "p/"]) await quiet(del(k + pid));
+  await quiet(del("k/" + (await sha(key))));
+  return json({ ok: true, deleted: true });
+};
+
+/* ---------- zakup gry: Stripe → kod → aktywacja na maks. 3 urządzeniach ----------
+   Na Netlify ustaw zmienne środowiskowe:
+   STRIPE_SECRET_KEY   – klucz z panelu Stripe (najlepiej „restricted”, tylko odczyt Checkout Sessions)
+   STRIPE_PAYMENT_LINK – (opcjonalnie) id linku płatności plink_…, żeby kody wydawać tylko za ten produkt */
+const LIC_DEV = 3, LIC_IDLE = 30 * 864e5;
+const STRIPE = () => (process.env.STRIPE_API || "https://api.stripe.com");
+const newLic = () => "RW-" + rnd(4) + "-" + rnd(4) + "-" + rnd(4);
+const normLic = k => { const s = String(k || "").toUpperCase().replace(/[^A-Z0-9]/g, ""); const t = s.startsWith("RW") ? s.slice(2) : s; return t.length === 12 ? "RW-" + t.slice(0, 4) + "-" + t.slice(4, 8) + "-" + t.slice(8) : ""; };
+const devOk = d => /^[a-z0-9]{8,40}$/i.test(String(d || ""));
+async function licGet(kod) { const k = normLic(kod); if (!k) return null; return await get("lk/" + (await sha(k))); }
+async function licPut(L) { await put("lk/" + (await sha(L.kod)), L); }
+
+routes["GET zakup"] = async (req, ip) => {
+  if (limited("zk:" + ip, 20, 600e3)) return err("Za dużo prób. Spróbuj za kilka minut.", 429);
+  const id = new URL(req.url).searchParams.get("sesja") || "";
+  if (!/^cs_(test|live)_[A-Za-z0-9]{10,240}$/.test(id)) return err("Brak numeru płatności.");
+  const was = await get("lz/" + id); if (was && was.kod) return json({ ok: true, kod: was.kod, ponownie: true });
+  const sk = process.env.STRIPE_SECRET_KEY; if (!sk) return err("Sprzedaż nie jest jeszcze skonfigurowana.", 503);
+  const r = await fetch(STRIPE() + "/v1/checkout/sessions/" + encodeURIComponent(id), { headers: { authorization: "Bearer " + sk } });
+  if (r.status === 404) return err("Nie znaleziono takiej płatności.", 404);
+  if (!r.ok) return err("Nie udało się sprawdzić płatności. Spróbuj za chwilę.", 502);
+  const s = await r.json();
+  if (s.status !== "complete" || s.payment_status !== "paid") return err("Płatność nie jest jeszcze zakończona. Odśwież stronę za chwilę.", 402);
+  const pl = process.env.STRIPE_PAYMENT_LINK; if (pl && s.payment_link !== pl) return err("Ta płatność nie dotyczy gry Rewir.", 403);
+  const L = { kod: newLic(), t: Date.now(), sesja: id, email: clean(s.customer_details && s.customer_details.email, 120), kwota: s.amount_total || 0, waluta: s.currency || "", devs: {} };
+  const ref = normPid(s.client_reference_id || "");
+  if (ref.length === 10 && (await get("p/" + ref))) { L.ref = ref; const r = (await get("rf/" + ref)) || { n: 0, pend: 0 }; r.n++; r.pend++; await put("rf/" + ref, r); }
+  await licPut(L); await put("lz/" + id, { kod: L.kod, t: L.t });
+  return json({ ok: true, kod: L.kod });
+};
+
+routes["POST aktywuj"] = async (req, ip) => {
+  if (limited("ak:" + ip, 15, 600e3)) return err("Za dużo prób. Spróbuj za kilka minut.", 429);
+  const b = await body(req), L = await licGet(b.kod);
+  if (!L || L.off) return err("Nie ma takiego kodu. Sprawdź, czy przepisałeś go dokładnie.", 404);
+  if (!devOk(b.dev)) return err("Złe urządzenie.");
+  const now = Date.now(), D = L.devs || (L.devs = {});
+  if (!D[b.dev]) {
+    const ids = Object.keys(D);
+    if (ids.length >= LIC_DEV) {
+      const old = ids.sort((a, c) => D[a] - D[c])[0];
+      if (now - D[old] > LIC_IDLE) delete D[old];
+      else return err("Ten kod działa już na " + LIC_DEV + " urządzeniach. Nieużywane urządzenie zwalnia miejsce po 30 dniach.", 409);
+    }
+  }
+  D[b.dev] = now; let bonus = 0; if (L.ref && !L.bonus) { L.bonus = now; bonus = 200; }
+  await licPut(L);
+  return json({ ok: true, kod: L.kod, urz: Object.keys(D).length, max: LIC_DEV, bonus });
+};
+
+routes["GET licencja"] = async (req, ip) => {
+  if (limited("lc:" + ip, 60, 600e3)) return err("Za dużo prób.", 429);
+  const q = new URL(req.url).searchParams, L = await licGet(q.get("kod")), dev = q.get("dev");
+  if (!L || L.off) return json({ ok: false });
+  if (!devOk(dev) || !(L.devs || {})[dev]) return json({ ok: false, aktywuj: true });
+  L.devs[dev] = Date.now(); await licPut(L);
+  return json({ ok: true });
+};
+
+/* =====================================================================
+   v190: moderacja, zgłoszenia, powiadomienia push, ranking okolicy, polecenia
+   ===================================================================== */
+
+/* ---------- filtr wulgaryzmów (PL + najczęstsze EN), odporny na „k*rwa”, „kurrrwa”, „ku.rwa”, „qrwa”, „h00j” ---------- */
+const BADW = ["kurw", "qrw", "chuj", "huj", "jeban", "jebac", "jebie", "jebi", "jebn", "zajeb", "wyjeb", "przyjeb", "odjeb", "pojeb", "rozjeb",
+  "pierdol", "pierdal", "spierd", "wypierd", "pizd", "kutas", "fiut", "cwel", "ciota", "dziwk", "szmat", "suka", "sukinsyn", "debil", "kretyn", "ruchac", "ruchan",
+  "fuck", "shit", "bitch", "cunt", "nigg", "faggot", "whore", "hitler", "nazi"];
+const SAFE = ["debiut"];   // słowa, które zawierają „zakazany” rdzeń, a są niewinne
+function normTxt(s) {
+  const map = { "ą": "a", "ć": "c", "ę": "e", "ł": "l", "ń": "n", "ó": "o", "ś": "s", "ź": "z", "ż": "z", "0": "o", "1": "i", "!": "i", "3": "e", "4": "a", "@": "a", "5": "s", "$": "s", "7": "t", "8": "b", "v": "w", "x": "ks" };
+  let t = String(s || "").toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "");
+  t = t.replace(/[ąćęłńóśźż01!34@5$78vx]/g, c => map[c] || c).replace(/[^a-z]/g, "").replace(/(.)\1+/g, "$1");
+  return t;
+}
+export function isBad(s) {
+  const t = normTxt(s); if (!t) return false;
+  let u = t; for (const w of SAFE) u = u.split(w).join("_");
+  return BADW.some(w => u.includes(w.replace(/(.)\1+/g, "$1")));
+}
+export function maskBad(s) {
+  return String(s || "").replace(/[^\s.,!?;:()"'-]+/g, w => (isBad(w) ? w[0] + "*".repeat(Math.max(2, w.length - 1)) : w));
+}
+const BAD_MSG = "Ta nazwa zawiera niedozwolone słowo. Wybierz inną.";
+/* sprawdza pola żądania przed właściwą obsługą (bez zmian w starym kodzie) */
+function guard(name, reject, maskF, fix) {
+  const orig = routes[name]; if (!orig) return;
+  routes[name] = async (req, ip, me, arg) => {
+    const t = await req.text(); if (t.length > MAXBODY) return err("Za duże dane.", 413);
+    let o = {}; try { o = JSON.parse(t || "{}") || {}; } catch { return err("Złe dane."); }
+    for (const f of reject || []) if (o[f] && isBad(o[f])) return err(BAD_MSG);
+    for (const f of maskF || []) if (typeof o[f] === "string") o[f] = maskBad(o[f]);
+    for (const [f, v] of Object.entries(fix || {})) if (o[f] && isBad(o[f])) o[f] = v;
+    if (name === "POST chat" && me && HID.m[me.pid]) return err("Twój czat jest wyłączony po zgłoszeniach innych graczy.", 403);
+    if (name === "POST profile" && me && HID.p[me.pid] && o.nick && !isBad(o.nick) && clean(o.nick, 20) !== me.nick) {   // nowa, czysta ksywka zdejmuje ukrycie
+      const h = (await get("mod/h")) || { p: {}, t: {}, m: {} }; delete h.p[me.pid]; await put("mod/h", h); HID = h;
+    }
+    return orig(new Request(req.url, { method: req.method, headers: req.headers, body: JSON.stringify(o) }), ip, me, arg);
+  };
+}
+guard("POST register", ["nick"]); guard("POST profile", ["nick"]);
+guard("POST track", ["name"]); guard("POST group", ["name", "place"]);
+guard("POST chat", null, ["x"]);
+guard("POST village", null, null, { name: "Wioska" }); guard("POST myvillage", null, null, { name: "Wioska" });
+
+/* ---------- ukryci gracze, trasy i wyciszony czat (wczytywane raz na żądanie) ---------- */
+let HID = { p: {}, t: {}, m: {} }, HIDt = 0;
+async function loadHid() { if (Date.now() - HIDt < 30e3) return; HIDt = Date.now(); HID = Object.assign({ p: {}, t: {}, m: {} }, (await get("mod/h")) || {}); }
+const HNICK = "Gracz (ukryty)";
+const showN = (pid, n) => (HID.p[pid] ? HNICK : n);
+
+/* ---------- zgłoszenia ---------- */
+const REP_N = 3;   // tylu różnych graczy musi zgłosić, żeby coś zniknęło
+routes["POST report"] = async (req, ip, me) => {
+  if (!me) return err("Dołącz do gry online, żeby zgłaszać.", 401);
+  if (limited("rp:" + me.pid, 20, 3600e3)) return err("Za dużo zgłoszeń. Spróbuj później.", 429);
+  const b = await body(req), kind = String(b.kind || "");
+  let typ = "", id = "", label = "";
+  if (kind === "trasa") { const rid = +b.rid, tr = await get("t/" + rid); if (!tr) return err("Nie ma takiej trasy.", 404); typ = "t"; id = String(rid); label = tr.name; }
+  else if (kind === "wynik") {   // wpis w rankingu: szukamy gracza po ksywce i czasie
+    const lb = await get("lb/" + +b.rid); const e = lb && Object.entries(lb.times || {}).find(([p, x]) => x.n === b.n && Math.abs(x.t - +b.t) < 0.01);
+    if (!e) return err("Nie znaleziono tego wyniku.", 404); typ = "p"; id = e[0]; label = e[1].n;
+  } else if (kind === "wiad") {  // wiadomość na czacie: sprawdzamy, że naprawdę jest w rozmowie
+    const fp = normPid(b.code), a = (await get("cm/" + pair(me.pid, fp) + "/" + fp)) || [], m = a.find(x => x.t === +b.t);
+    if (!m) return err("Nie znaleziono tej wiadomości.", 404); typ = "m"; id = fp; label = m.x.slice(0, 120);
+    const bl = (await get("bl/" + me.pid)) || {}; bl[fp] = Date.now(); await put("bl/" + me.pid, bl);   // zgłaszający od razu blokuje
+  } else if (kind === "gracz") { const fp = normPid(b.code), p = await get("p/" + fp); if (!p) return err("Nie ma takiego gracza.", 404); typ = "p"; id = fp; label = p.nick; }
+  else return err("Złe zgłoszenie.");
+  if (id === me.pid) return err("Nie możesz zgłosić siebie.");
+  const key = "rp/" + typ + "/" + id, r = (await get(key)) || { by: {}, label: "", t: 0 };
+  r.by[me.pid] = Date.now(); r.label = clean(label, 120); r.t = Date.now(); r.why = clean(b.why, 80) || r.why || "";
+  await put(key, r);
+  const n = Object.keys(r.by).length; let hidden = false;
+  if (n >= REP_N) {
+    const h = (await get("mod/h")) || { p: {}, t: {}, m: {} };
+    if (!h[typ][id]) { h[typ][id] = Date.now(); await put("mod/h", h); HID = h; hidden = true; }
+  }
+  return json({ ok: true, hidden, blocked: typ === "m" || undefined });
+};
+
+/* ---------- panel moderatora (ADMIN_KEY w zmiennych środowiskowych Netlify) ---------- */
+const adminOk = k => { const a = process.env.ADMIN_KEY || ""; return a.length >= 12 && String(k || "") === a; };
+routes["GET mod"] = async (req, ip) => {
+  if (limited("ad:" + ip, 30, 600e3)) return err("Za dużo prób.", 429);
+  if (!adminOk(new URL(req.url).searchParams.get("klucz"))) return err("Zły klucz moderatora.", 403);
+  const keys = await listKeys("rp/"), rows = [];
+  for (const k of keys) { const r = await get(k); if (!r) continue; const [, typ, id] = k.split("/"); rows.push({ typ, id, label: r.label, n: Object.keys(r.by || {}).length, t: r.t, why: r.why || "" }); }
+  rows.sort((a, b) => b.t - a.t);
+  return json({ reports: rows.slice(0, 300), hidden: (await get("mod/h")) || { p: {}, t: {}, m: {} } });
+};
+routes["POST mod"] = async (req, ip) => {
+  if (limited("ad:" + ip, 30, 600e3)) return err("Za dużo prób.", 429);
+  const b = await body(req); if (!adminOk(b.klucz)) return err("Zły klucz moderatora.", 403);
+  if (b.co === "region") { let n = 0; for (const k of await listKeys("t/")) { const tr = await get(k); if (tr && tr.wps) { await updRegion(tr, await get("lb/" + tr.rid)); n++; } } return json({ ok: true, tracks: n }); }
+  const typ = ["p", "t", "m"].includes(b.typ) ? b.typ : "", id = clean(b.id, 20); if (!typ || !id) return err("Złe dane.");
+  const h = (await get("mod/h")) || { p: {}, t: {}, m: {} };
+  if (b.co === "ukryj") h[typ][id] = Date.now(); else if (b.co === "pokaz") { delete h[typ][id]; await del("rp/" + typ + "/" + id).catch(() => {}); }
+  else if (b.co === "odrzuc") { await del("rp/" + typ + "/" + id).catch(() => {}); return json({ ok: true }); }
+  else return err("Nieznana akcja.");
+  await put("mod/h", h); HID = h; HIDt = Date.now();
+  return json({ ok: true, hidden: h });
+};
+
+/* ---------- powiadomienia push (klucze VAPID tworzą się same i leżą w Blobs) ---------- */
+let WP = null, VAP = null;
+async function wpLib() {
+  if (WP === false) return null;
+  if (!WP) { try { WP = (await import("web-push")).default; } catch { WP = false; return null; } }
+  if (!VAP) { VAP = await get("vapid"); if (!VAP) { VAP = WP.generateVAPIDKeys(); await put("vapid", VAP); } }
+  return WP;
+}
+const PKINDS = ["rekord", "czat", "znaj", "grupa"];
+routes["GET pushkey"] = async () => { const w = await wpLib(); if (!w) return err("Powiadomienia nie są dostępne na serwerze.", 503); return json({ key: VAP.publicKey }); };
+routes["POST push"] = async (req, ip, me) => {
+  if (!me) return err("Dołącz do gry online, żeby włączyć powiadomienia.", 401);
+  if (limited("pu:" + me.pid, 30, 3600e3)) return err("Za często.", 429);
+  const b = await body(req), key = "ps/" + me.pid, cur = (await get(key)) || { subs: [], on: {} };
+  if (b.off) { cur.subs = cur.subs.filter(s => s.endpoint !== b.endpoint); }
+  else if (b.sub) {
+    const s = b.sub; if (!s || typeof s.endpoint !== "string" || !/^https:\/\//.test(s.endpoint) || s.endpoint.length > 1000 || !s.keys || !s.keys.p256dh || !s.keys.auth) return err("Zła subskrypcja.");
+    cur.subs = [{ endpoint: s.endpoint, keys: { p256dh: String(s.keys.p256dh).slice(0, 200), auth: String(s.keys.auth).slice(0, 100) }, t: Date.now() }, ...cur.subs.filter(x => x.endpoint !== s.endpoint)].slice(0, 3);
+  }
+  if (b.on && typeof b.on === "object") for (const k of PKINDS) if (k in b.on) cur.on[k] = b.on[k] ? 1 : 0;
+  await put(key, cur);
+  return json({ ok: true, subs: cur.subs.length, on: Object.fromEntries(PKINDS.map(k => [k, cur.on[k] !== 0])) });
+};
+async function notify(pid, kind, msg) {
+  try {
+    const ps = await get("ps/" + pid); if (!ps || !ps.subs || !ps.subs.length || ps.on[kind] === 0) return;
+    const w = await wpLib(); if (!w) return;
+    const opts = { vapidDetails: { subject: "https://rewir-gra.netlify.app", publicKey: VAP.publicKey, privateKey: VAP.privateKey }, TTL: 12 * 3600, timeout: 4000 };
+    const payload = JSON.stringify({ title: msg.title, body: msg.body, url: msg.url || "/", tag: msg.tag || kind });
+    let dead = [];
+    await Promise.race([Promise.all(ps.subs.map(s => w.sendNotification(s, payload, opts).catch(e => { if (e && (e.statusCode === 404 || e.statusCode === 410)) dead.push(s.endpoint); }))), new Promise(r => setTimeout(r, 5000))]);
+    if (dead.length) { ps.subs = ps.subs.filter(s => !dead.includes(s.endpoint)); await put("ps/" + pid, ps); }
+  } catch { }
+}
+const fmtS = t => { const m = Math.floor(t / 60), s = t - m * 60; return (m ? m + ":" + (s < 10 ? "0" : "") : "") + s.toFixed(1).replace(".", ",") + (m ? "" : " s"); };
+/* zdarzenia: pobity rekord trasy, wiadomość, nowy znajomy, zaproszenie do grupy */
+{
+  const oRun = routes["POST run"];
+  routes["POST run"] = async (req, ip, me, arg) => {
+    const t = await req.text(); let rid = 0; try { rid = +JSON.parse(t).rid; } catch { }
+    const before = me && rid ? await get("lb/" + rid) : null;
+    const lead = lb => { let b = null; for (const [p, x] of Object.entries((lb && lb.times) || {})) if (!b || x.t < b.x.t) b = { p, x }; return b; };
+    const L0 = lead(before);
+    const res = await oRun(new Request(req.url, { method: req.method, headers: req.headers, body: t }), ip, me, arg);
+    try {
+      if (me && res.status === 200 && L0 && L0.p !== me.pid) {
+        const after = await get("lb/" + rid), L1 = lead(after);
+        if (L1 && L1.p === me.pid) { const tr = await get("t/" + rid);
+          await notify(L0.p, "rekord", { title: "🏁 Ktoś pobił Twój rekord", body: showN(me.pid, me.nick) + " przejechał „" + (tr ? tr.name : "trasę") + "” w " + fmtS(L1.x.t) + ". Odbijesz?", url: "/?go=rec", tag: "rekord-" + rid }); }
+      }
+    } catch { }
+    return res;
+  };
+  const oChat = routes["POST chat"];
+  routes["POST chat"] = async (req, ip, me, arg) => {
+    const res = await oChat(req, ip, me, arg);
+    try {
+      if (me && res.status === 200) { const fp = normPid(arg), st = await get("s/" + fp), now = Date.now();
+        if (!(st && now - st.t < 120e3) && !limited("pn:" + me.pid + fp, 1, 600e3))
+          await notify(fp, "czat", { title: "💬 " + showN(me.pid, me.nick), body: "Nowa wiadomość w Rewirze", url: "/?go=friends", tag: "czat-" + me.pid }); }
+    } catch { }
+    return res;
+  };
+  const oFr = routes["POST friend"];
+  routes["POST friend"] = async (req, ip, me, arg) => {
+    const t = await req.text(); const res = await oFr(new Request(req.url, { method: req.method, headers: req.headers, body: t }), ip, me, arg);
+    try { if (me && res.status === 200) { const fp = normPid(JSON.parse(t).code); await notify(fp, "znaj", { title: "🤝 Nowy znajomy", body: showN(me.pid, me.nick) + " dodał Cię do znajomych w Rewirze.", url: "/?go=friends", tag: "znaj" }); } } catch { }
+    return res;
+  };
+  const oGa = routes["POST group add"];
+  routes["POST group add"] = async (req, ip, me, arg) => {
+    const t = await req.text(); const res = await oGa(new Request(req.url, { method: req.method, headers: req.headers, body: t }), ip, me, arg);
+    try { if (me && res.status === 200) { const fp = normPid(JSON.parse(t).code), g = await get("g/" + clean(arg, 12));
+      if (g) await notify(fp, "grupa", { title: "🚵 Zaproszenie na wspólny zjazd", body: showN(me.pid, me.nick) + " zaprasza Cię: „" + g.name + "”, " + new Date(g.at).toLocaleString("pl-PL", { timeZone: "Europe/Warsaw", weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) + ".", url: "/?go=friends", tag: "grupa-" + g.gid }); } } catch { }
+    return res;
+  };
+}
+
+/* ---------- ranking okolicy (50 km): punkty za miejsca na trasach + królowie tygodnia ---------- */
+const RPTS = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1], REG_KM = 50;
+async function updRegion(tr, lb) {
+  try {
+    const key = "rg/" + cell5(tr.wps[0][0], tr.wps[0][1]), rg = (await get(key)) || { tr: {} };
+    const top = Object.entries((lb && lb.times) || {}).sort((a, b) => a[1].t - b[1].t || a[1].d - b[1].d).slice(0, RPTS.length);
+    const K = kingOf(lb || {});
+    rg.tr[tr.rid] = { s: tr.wps[0], name: tr.name, pts: Object.fromEntries(top.map(([p, x], i) => [p, [RPTS[i], x.n, x.i]])),
+      king: K ? { p: K.pid, n: K.n, i: K.i, t: K.t, wk: weekKey(Date.now()) } : null };
+    await put(key, rg);
+  } catch { }
+}
+routes["GET region"] = async (req, ip, me) => {
+  const u = new URL(req.url), lat = +u.searchParams.get("lat"), lng = +u.searchParams.get("lng");
+  if (!fin(lat) || !fin(lng)) return err("Podaj lat i lng.");
+  const [cy, cx] = cell5(lat, lng).split("_").map(Number), keys = [];
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) keys.push("rg/" + (cy + dy) + "_" + (cx + dx));
+  const P = {}, kings = [], wk = weekKey(Date.now()); let nt = 0;
+  for (const rg of await Promise.all(keys.map(get))) for (const [rid, x] of Object.entries((rg && rg.tr) || {})) {
+    if (HID.t[rid] || km(lat, lng, x.s[0], x.s[1]) > REG_KM) continue; nt++;
+    for (const [pid, [p, n, i]] of Object.entries(x.pts || {})) { const o = P[pid] || (P[pid] = { n: showN(pid, n), i, pts: 0, tracks: 0, crowns: 0, me: me && pid === me.pid || undefined }); o.pts += p; o.tracks++; }
+    if (x.king && x.king.wk === wk) { kings.push({ name: x.name, n: showN(x.king.p, x.king.n), i: x.king.i, t: x.king.t, me: me && x.king.p === me.pid || undefined });
+      const o = P[x.king.p] || (P[x.king.p] = { n: showN(x.king.p, x.king.n), i: x.king.i, pts: 0, tracks: 0, crowns: 0, me: me && x.king.p === me.pid || undefined }); o.crowns++; }
+  }
+  const list = Object.values(P).sort((a, b) => b.pts - a.pts || b.crowns - a.crowns);
+  return json({ km: REG_KM, tracks: nt, players: list.slice(0, 50), n: list.length, rank: list.findIndex(x => x.me) + 1, kings: kings.slice(0, 30) });
+};
+
+/* ---------- polecenia: kupujący z linku znajomego → obaj dostają po 200 monet ---------- */
+const REF_BONUS = 200;
+routes["POST refclaim"] = async (req, ip, me) => {
+  if (!me) return err("Dołącz do gry online.", 401);
+  const r = (await get("rf/" + me.pid)) || { n: 0, pend: 0 };
+  const got = r.pend || 0; if (got) { r.pend = 0; await put("rf/" + me.pid, r); }
+  return json({ ok: true, claimed: got, coins: got * REF_BONUS, total: r.n || 0 });
+};
 
 export default async (req, context) => {
   const u = new URL(req.url), ip = (context && context.ip) || "?";
@@ -510,6 +872,7 @@ export default async (req, context) => {
     m = u.pathname.match(/^\/api\/([a-z]+)(?:\/([A-Za-z0-9_.-]+))?(?:\/([a-z]+))?\/?$/);
     const h = m && routes[req.method + " " + m[1] + (m[3] ? " " + m[3] : "")];
     if (!h) return err("Nieznany adres.", 404);
+    await loadHid();
     const me = await who(req);
     return await h(req, ip, me, m[2]);
   } catch (e) {
